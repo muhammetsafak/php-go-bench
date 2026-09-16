@@ -1,0 +1,50 @@
+{
+  "candidates": ["go", "fpm", "frankenphp"],
+  "scenarios": [
+    {
+      "id": "auth",
+      "method": "GET",
+      "path": "/auth",
+      "what": "bearer token verification only (RS256 signature, iss, aud, exp, scope); no database"
+    },
+    {
+      "id": "read",
+      "method": "GET",
+      "path": "/events/[1-9][0-9]{0,5}",
+      "randomPath": true,
+      "what": "token verification, then one row by primary key (random id in 1..999999 of a 1,000,000-row table)"
+    },
+    {
+      "id": "write",
+      "method": "POST",
+      "path": "/events",
+      "body": "{\"kind\":\"page_view\",\"payload\":{\"path\":\"/pricing\",\"ms\":182,\"ref\":\"newsletter\"}}",
+      "what": "token verification, JSON body validation, then one INSERT ... RETURNING id"
+    }
+  ],
+  "rate": {
+    "targets": { "auth": 50000, "read": 50000, "write": 10000 },
+    "connections": 256,
+    "duration": "60s",
+    "repetitions": 5,
+    "warmupSeconds": 5,
+    "cooldownSeconds": 5
+  },
+  "ceiling": {
+    "connections": [16, 64, 128, 256],
+    "duration": "15s",
+    "repetitions": 3,
+    "cooldownSeconds": 3
+  },
+  "probe": {
+    "rate": 50000,
+    "connections": 256,
+    "duration": "10s"
+  },
+  "budget": {
+    "app": { "cpus": "0-3", "cores": 4, "memory": "1g" },
+    "db": { "cpus": "4-7", "cores": 4, "memory": "2g" },
+    "load": { "cpus": "8-11", "cores": 4, "memory": "1g" },
+    "dbConnections": 32
+  }
+}

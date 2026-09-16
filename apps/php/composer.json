@@ -1,0 +1,22 @@
+{
+    "name": "muhammetsafak/php-go-bench-php",
+    "description": "PHP candidate for php-go-bench: plain PHP, PDO pgsql, firebase/php-jwt.",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.5",
+        "ext-openssl": "*",
+        "ext-pdo_pgsql": "*",
+        "firebase/php-jwt": "^7.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "Bench\\": "src/"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "classmap-authoritative": true,
+        "sort-packages": true
+    }
+}
