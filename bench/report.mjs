@@ -172,6 +172,7 @@ for (const candidate of candidates) {
       peakCores: round(median(pick(runs, (r) => r.peakCores)), 2),
       cpuMsPerReq: round(median(pick(runs, (r) => r.cpuMsPerReq)), 4),
       dbAvgCores: round(median(pick(runs, (r) => r.dbAvgCores)), 2),
+      dbCpuMsPerReq: round(median(pick(runs, (r) => r.dbCpuMsPerReq)), 4),
       rssPeakMiB: round(max(pick(runs, (r) => r.rssPeakMiB)), 1),
     });
   }

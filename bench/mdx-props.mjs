@@ -45,6 +45,18 @@ console.log(`series={[
 ${series(rate, (r) => r?.cpuMsPerReq, (x) => (x == null ? null : Math.round(x * 1000)))}
 ]}`);
 
+console.log('\n/* ---- rate phase: database CPU microseconds per request ---- */');
+console.log(`series={[
+${series(rate, (r) => r?.dbCpuMsPerReq, (x) => (x == null ? null : Math.round(x * 1000)))}
+]}`);
+
+console.log('\n/* ---- rate phase: token verification share of the read request (auth CPU / read CPU) ---- */');
+for (const c of ORDER) {
+  const a = find(rate, c, 'auth')?.cpuMsPerReq;
+  const r = find(rate, c, 'read')?.cpuMsPerReq;
+  console.log(`${LABEL[c]}: ${a && r ? Math.round((a / r) * 100) : '—'}%`);
+}
+
 console.log('\n/* ---- rate phase: app cores in use ---- */');
 console.log(`series={[
 ${series(rate, (r) => r?.avgCores)}

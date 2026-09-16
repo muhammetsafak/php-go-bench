@@ -1,6 +1,6 @@
 {
   "stamp": "2026-09-16",
-  "generated": "2026-09-16T16:34:36.595Z",
+  "generated": "2026-09-16T17:24:38.133Z",
   "estimator": {
     "rate": "median of repetitions (min/max beside it); achieved = 2xx answers / nominal window",
     "ceiling": "best of N repetitions per connection count, median and spread beside it; ceiling = best clean cell over the sweep",
@@ -171,6 +171,7 @@
       "peakCores": 2.35,
       "cpuMsPerReq": 0.0465,
       "dbAvgCores": 0,
+      "dbCpuMsPerReq": 0,
       "rssPeakMiB": 26.7
     },
     {
@@ -193,6 +194,7 @@
       "peakCores": 3.34,
       "cpuMsPerReq": 0.0641,
       "dbAvgCores": 1.69,
+      "dbCpuMsPerReq": 0.0337,
       "rssPeakMiB": 28.6
     },
     {
@@ -215,6 +217,7 @@
       "peakCores": 0.99,
       "cpuMsPerReq": 0.0955,
       "dbAvgCores": 0.48,
+      "dbCpuMsPerReq": 0.0476,
       "rssPeakMiB": 26.7
     },
     {
@@ -237,6 +240,7 @@
       "peakCores": 4,
       "cpuMsPerReq": 0.1302,
       "dbAvgCores": 0,
+      "dbCpuMsPerReq": 0.0001,
       "rssPeakMiB": 62.5
     },
     {
@@ -259,6 +263,7 @@
       "peakCores": 3.96,
       "cpuMsPerReq": 0.1684,
       "dbAvgCores": 1.26,
+      "dbCpuMsPerReq": 0.0532,
       "rssPeakMiB": 63.4
     },
     {
@@ -281,6 +286,7 @@
       "peakCores": 2.22,
       "cpuMsPerReq": 0.2072,
       "dbAvgCores": 0.81,
+      "dbCpuMsPerReq": 0.0814,
       "rssPeakMiB": 63.3
     },
     {
@@ -303,6 +309,7 @@
       "peakCores": 2.95,
       "cpuMsPerReq": 0.0879,
       "dbAvgCores": 0,
+      "dbCpuMsPerReq": 0,
       "rssPeakMiB": 139.7
     },
     {
@@ -325,6 +332,7 @@
       "peakCores": 2.69,
       "cpuMsPerReq": 0.1167,
       "dbAvgCores": 0.81,
+      "dbCpuMsPerReq": 0.0354,
       "rssPeakMiB": 137.8
     },
     {
@@ -347,6 +355,7 @@
       "peakCores": 1.49,
       "cpuMsPerReq": 0.1459,
       "dbAvgCores": 0.51,
+      "dbCpuMsPerReq": 0.0513,
       "rssPeakMiB": 136.9
     }
   ],

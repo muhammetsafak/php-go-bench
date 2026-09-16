@@ -133,7 +133,7 @@ the protocol above in three ways:
   `frankenphp`, repetition 3; that block was measured again. See
   [`results/2026-09-16/EXCLUDED.md`](results/2026-09-16/EXCLUDED.md). The raw
   files of the interrupted block were lost, and that file says how.
-- **Seven flat-out probes are empty** (`raw/probe-ceil_*`, 0 bytes). In
+- **Six of the 24 flat-out probes are empty** (`raw/probe-ceil_*`, 0 bytes). In
   10 s, the no-code nginx answers 5 to 7 million requests, and oha keeps every
   result in memory; the most likely cause is the load container's 1 GiB limit.
   The at-rate probes, which are what the validity gate uses, are complete for
