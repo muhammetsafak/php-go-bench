@@ -25,6 +25,11 @@
 #   ./bench/run.sh --rate           phase A only
 #   ./bench/run.sh --ceiling        phase B only
 #   ./bench/run.sh --smoke          5-second version of both, one repetition
+#
+# Re-measuring a block into an existing stamp (e.g. after the host slept):
+#   STAMP=<stamp> CANDS=frankenphp REP_FROM=3 CEIL_REPS=3 ./bench/run.sh --ceiling
+# REP_FROM sets the first repetition number; meta.json is not rewritten, the
+# re-run is appended to its "topups" list instead.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
@@ -45,6 +50,7 @@ read -r -a CEIL_CONNS <<< "${CEIL_CONNS:-$(jq -r '.ceiling.connections | join(" 
 CEIL_DUR="${CEIL_DUR:-$(jq -r .ceiling.duration $CFG)}"
 CEIL_REPS="${CEIL_REPS:-$(jq -r .ceiling.repetitions $CFG)}"
 CEIL_COOL=$(jq -r .ceiling.cooldownSeconds $CFG)
+REP_FROM="${REP_FROM:-1}"
 PROBE_RATE=$(jq -r .probe.rate $CFG)
 PROBE_CONNS=$(jq -r .probe.connections $CFG)
 PROBE_DUR="${PROBE_DUR:-$(jq -r .probe.duration $CFG)}"
@@ -165,7 +171,7 @@ shuffled() { printf '%s\n' "${CANDS[@]}" | awk 'BEGIN{srand('"$1"')} {print rand
 
 phase_rate() {
   local rep cand sc q
-  for rep in $(seq 1 "$RATE_REPS"); do
+  for rep in $(seq "$REP_FROM" "$RATE_REPS"); do
     for cand in $(shuffled "$rep"); do
       open_block rate "$cand" "$rep" || continue
       # write last: it is the only scenario that changes the table
@@ -181,7 +187,7 @@ phase_rate() {
 
 phase_ceiling() {
   local rep cand sc c
-  for rep in $(seq 1 "$CEIL_REPS"); do
+  for rep in $(seq "$REP_FROM" "$CEIL_REPS"); do
     for cand in $(shuffled "$((rep + 100))"); do
       open_block ceil "$cand" "$rep" || continue
       for sc in "${SCENS[@]}"; do
@@ -232,7 +238,15 @@ main() {
   trap 'docker rm -f pgb-app pgb-probe pgb-sampler >/dev/null 2>&1 || true' EXIT
 
   start_db
-  write_meta
+  local topup=false
+  if [ -f "$OUT/meta.json" ]; then
+    topup=true
+    jq --arg mode "$MODE" --arg started "$(date -u +%FT%TZ)" --arg cands "${CANDS[*]}" --arg from "$REP_FROM" \
+       '.topups = ((.topups // []) + [{mode:$mode, started:$started, candidates:($cands|split(" ")), repFrom:($from|tonumber)}])' \
+       "$OUT/meta.json" > "$OUT/meta.json.tmp" && mv "$OUT/meta.json.tmp" "$OUT/meta.json"
+  else
+    write_meta
+  fi
   log "results → $OUT"
 
   case "$MODE" in
@@ -242,7 +256,9 @@ main() {
     *) log "unknown mode $MODE"; exit 2 ;;
   esac
 
-  jq --arg t "$(date -u +%FT%TZ)" '. + {finished:$t}' "$OUT/meta.json" > "$OUT/meta.json.tmp" && mv "$OUT/meta.json.tmp" "$OUT/meta.json"
+  local fin='. + {finished:$t}'
+  $topup && fin='.topups[-1].finished = $t'
+  jq --arg t "$(date -u +%FT%TZ)" "$fin" "$OUT/meta.json" > "$OUT/meta.json.tmp" && mv "$OUT/meta.json.tmp" "$OUT/meta.json"
   docker rm -f pgb-db >/dev/null 2>&1 || true
   log "done — raw output in $RAW"
 }
