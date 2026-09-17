@@ -1,9 +1,15 @@
-# The first capacity ladder, and why it is not in the result
+# Two capacity ladders that are not in the result, and why
 
-The `floor`, `dbceiling` and `tune` phases of this run stand. The first
-attempt at the `ladder` and `soak` phases does not. It is kept here in full —
-`EXCLUDED-ladder-attempt-1.jsonl` and `excluded-raw/` — because the reason it
-failed is worth more than the numbers would have been.
+The `floor`, `dbceiling` and `tune` phases of this run stand. Two attempts at
+measuring capacity with a **search** do not. Both are kept here in full —
+`EXCLUDED-ladder-attempt-1.jsonl` with `excluded-raw/`,
+`EXCLUDED-ladder-attempt-2.jsonl` with `excluded-raw-2/` — because the reason
+they failed is worth more than the numbers would have been, and because the
+second one failed for a reason the first one hid.
+
+The published capacity comes from a third method, `phase_grid`: seven fixed
+rates per cell, the same seven in every repetition, and a rate counts as
+carried when a majority of the repetitions met the service level at it.
 
 ## What it looked like
 
@@ -70,3 +76,84 @@ rather than obvious garbage — `18,750/s, median of three` reads like a result.
 It was caught because the closed-loop `tune` phase disagreed with it by a
 factor of three. A run with only one way of measuring capacity would not have
 caught it.
+
+
+---
+
+# Attempt 2 — the search was never the right shape
+
+The fixes above were made and the ladder and soak were measured again. The
+result was worse, and this time nothing was spoiled.
+
+| candidate | cores | rep 1 | rep 2 | rep 3 |
+|---|---|---|---|---|
+| go | 1 | 1,250 | 6,500 | 3,500 |
+| go | 4 | 45,000 | 24,000 | — |
+| fpm | 1 | 1,750 | 2,750 | 750 |
+| fpm | 4 | 4,250 | 5,750 | — |
+
+The same three candidates driven flat out in the `tune` phase, on the same
+cores, with the same pool sizes, differ by a few per cent between repetitions:
+go 17,042 / 29,721 / 55,715 at one, two and four cores; fpm 6,188 / 11,260 /
+20,379. CPU per request at a fixed rate was stable across the whole seven-hour
+run to within about ten per cent. Nothing was drifting.
+
+## What the numbers actually said
+
+The first step of the `fpm`, one core, repetition 1 cell, at 3,000 requests a
+second:
+
+* every one of the 90,000 requests was answered, both halves at exactly their
+  target rate
+* p50 1.44 ms
+* **p99 3,718 ms**
+* 22.7 CPU-seconds over a 30 s window — 0.76 of the one core it had
+
+A service that is not CPU-saturated, is delivering the full rate, and has a
+median of 1.4 ms does not have a 3.7-second 99th percentile because it ran out
+of capacity. oha reports two latencies and they disagreed by a factor of
+twenty:
+
+| | p50 | p75 | p99 | slowest |
+|---|---|---|---|---|
+| time to first byte | 1.42 ms | 47 ms | **190 ms** | 267 ms |
+| latency-corrected | 1.44 ms | 1,539 ms | **3,718 ms** | 3,819 ms |
+
+The server answered in 190 ms at the 99th percentile. The other 3.5 seconds is
+time the request spent waiting to be **sent**: with `--latency-correction` a
+request is timed from the moment it was due, so once responses get slow enough
+that the generator's connections are all occupied, the schedule slips and every
+subsequent request inherits the slip. That is the correct thing for an
+open-loop measurement to do — it is what stops a load generator from politely
+slowing down and calling the result a pass. But it turns the boundary into a
+**cliff**: a rate is either comfortably met or catastrophically missed, with
+almost nothing in between, and the cliff sits wherever the queue happened to
+tip that time.
+
+## Why a search cannot measure a cliff that moves
+
+An exponential-then-bisect search assumes that pass/fail is monotone in the
+rate and stable enough to interrogate one point at a time. Neither holds here.
+Every repetition asks a different sequence of questions, so every repetition
+walks a different path across a boundary that is itself moving, and the answer
+is wherever that particular walk stopped. Confirming a failure with a second
+window — the attempt-2 fix — narrows the noise but does not change the shape of
+the problem: `fpm` at one core failed 3,000/s twice in a row in repetition 1
+and carried 2,750/s in repetition 2.
+
+The `tune` phase disagreed with attempt 1 by a factor of three and with attempt
+2 by a factor of eight. It was right both times.
+
+## What replaced it
+
+Seven fixed rates per cell, anchored to what that candidate carried flat out at
+that core budget, measured in all three repetitions, and voted:
+
+* nothing to steer — a spoiled window costs one point in one repetition
+* the repetitions answer the *same* questions, so they can be compared
+* the output is a curve, not a point: the rate at which latency leaves the
+  service level is visible rather than inferred, and the published number is
+  the last grid rate a majority of repetitions carried
+
+The cost is measuring some rates that are obviously out of reach. That is the
+cheaper mistake.

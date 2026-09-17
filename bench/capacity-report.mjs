@@ -81,16 +81,10 @@ const seconds = (d) => +String(d).replace(/s$/, '');
 
 /* ---------------------------------------------------------------- capacity */
 
-const capacityRows = steps.filter((s) => s.phase === 'capacity');
-const ladder = steps.filter((s) => s.phase === 'ladder');
+const grid = steps.filter((s) => s.phase === 'grid');
+const cellCeil = steps.filter((s) => s.phase === 'cellceiling');
 
-// The step that was actually run at <rate> in <rep> — the operating point. A
-// rate can have been measured twice (a failing window is confirmed before it
-// is believed); the window that carried the rate is the one that describes it.
-const pointAt = (candidate, cores, rep, rate) => {
-  const at = ladder.filter((s) => s.candidate === candidate && s.cores === cores && s.rep === rep && s.targetRate === rate);
-  return at.find((s) => s.pass) ?? at[0];
-};
+const worst = (p, field) => Math.max(p.read[field] ?? 0, p.write[field] ?? 0);
 
 const describe = (p) => {
   if (!p) return {};
@@ -99,6 +93,7 @@ const describe = (p) => {
   return {
     readP50Ms: p.read.p50ms, readP99Ms: p.read.p99ms,
     writeP50Ms: p.write.p50ms, writeP99Ms: p.write.p99ms,
+    serverP99Ms: worst(p, 'fb99ms'),
     cpuUsPerReq: p.cpuUsPerReq,
     dbCpuUsPerReq: p.dbCpuUsPerReq,
     appCores: round(p.resources.appCpuUs / 1e6 / w, 2),
@@ -109,28 +104,56 @@ const describe = (p) => {
   };
 };
 
+/* One row per rate per cell: what the repetitions said, and how they voted.
+   A rate is carried when a majority of the repetitions met the service level
+   at it — not when the best one did, and not when the median latency did. */
+const curves = [];
 const capacity = [];
 for (const candidate of candidates) {
   for (const cores of coreBudgets) {
-    const rows = capacityRows.filter((r) => r.candidate === candidate && r.cores === cores);
-    if (!rows.length) continue;
-    const values = rows.map((r) => r.capacity);
-    const med = median(values);
-    // The repetition whose answer is the median one (lowest rep number if tied).
-    const rep = rows.filter((r) => r.capacity === med).sort((a, b) => a.rep - b.rep)[0]
-      ?? rows.sort((a, b) => Math.abs(a.capacity - med) - Math.abs(b.capacity - med))[0];
-    const point = pointAt(candidate, cores, rep.rep, rep.capacity);
+    const cell = grid.filter((s) => s.candidate === candidate && s.cores === cores);
+    if (!cell.length) continue;
+    const rates = [...new Set(cell.map((s) => s.targetRate))].sort((a, b) => a - b);
+    const curve = rates.map((rate) => {
+      const at = cell.filter((s) => s.targetRate === rate);
+      const passed = at.filter((s) => s.pass).length;
+      return {
+        candidate, cores, rate,
+        repetitions: at.length,
+        passed,
+        carried: passed * 2 > at.length,
+        achieved: round(median(at.map((s) => s.achievedTotal))),
+        clientP99Ms: round(median(at.map((s) => worst(s, 'p99ms'))), 2),
+        serverP99Ms: round(median(at.map((s) => worst(s, 'fb99ms'))), 2),
+        p50Ms: round(median(at.map((s) => Math.max(s.read.p50ms, s.write.p50ms))), 2),
+        cpuUsPerReq: round(median(at.map((s) => s.cpuUsPerReq)), 2),
+        dbCpuUsPerReq: round(median(at.map((s) => s.dbCpuUsPerReq)), 2),
+        appCores: round(median(at.map((s) => s.resources.appCpuUs / 1e6 / s.durationSec)), 2),
+        failedOn: [...new Set(at.flatMap((s) => s.failedOn ?? []))],
+      };
+    });
+    curves.push(...curve);
+
+    const carried = curve.filter((c) => c.carried);
+    const cap = carried.length ? Math.max(...carried.map((c) => c.rate)) : 0;
+    const above = curve.filter((c) => c.rate > cap && !c.carried);
+    /* The operating point is described by the repetition at that rate which
+       actually met the service level — a window that did not is describing
+       something else. */
+    const at = cell.filter((s) => s.targetRate === cap);
+    const point = at.find((s) => s.pass) ?? at[0];
+    const ceilRows = cellCeil.filter((s) => s.candidate === candidate && s.cores === cores);
+
     capacity.push({
       candidate, cores,
-      workers: rows[0].workers,
-      repetitions: rows.length,
-      capacity: med,
-      capacityMin: min(values),
-      capacityMax: max(values),
-      spreadPct: med ? round(((max(values) - min(values)) / med) * 100, 1) : null,
-      perCore: round(med / cores),
-      firstFailingRate: median(rows.map((r) => r.firstFailingRate)) || null,
-      fromRep: rep.rep,
+      workers: cell[0].workers,
+      repetitions: [...new Set(cell.map((s) => s.rep))].length,
+      capacity: cap,
+      unanimous: carried.length ? curve.find((c) => c.rate === cap).passed === curve.find((c) => c.rate === cap).repetitions : null,
+      firstRateNotCarried: above.length ? Math.min(...above.map((c) => c.rate)) : null,
+      perCore: cores ? round(cap / cores) : null,
+      flatOutRps: ceilRows.length ? max(ceilRows.map((r) => r.totalRps)) : null,
+      headroomPct: cap && ceilRows.length ? round((cap / max(ceilRows.map((r) => r.totalRps))) * 100, 1) : null,
       ...describe(point),
     });
   }
@@ -141,18 +164,20 @@ const cap = (candidate, cores) => capacity.find((c) => c.candidate === candidate
 /* How the curve bends: is a fourth core worth as much as the first? */
 const scaling = candidates.map((candidate) => {
   const one = cap(candidate, 1)?.capacity;
+  const oneFlat = cap(candidate, 1)?.flatOutRps;
   const row = { candidate, base: one };
   for (const cores of coreBudgets) {
     const c = cap(candidate, cores);
     row[`c${cores}`] = c?.capacity ?? null;
+    row[`c${cores}Flat`] = c?.flatOutRps ?? null;
     row[`c${cores}PerCore`] = c?.perCore ?? null;
-    row[`c${cores}Efficiency`] = one && c ? round(c.capacity / (one * cores), 3) : null;
+    row[`c${cores}Efficiency`] = one && c?.capacity ? round(c.capacity / (one * cores), 3) : null;
+    row[`c${cores}FlatEfficiency`] = oneFlat && c?.flatOutRps ? round(c.flatOutRps / (oneFlat * cores), 3) : null;
   }
   return row;
 });
 
-/* What a target costs, from the measured per-core capacity at each budget.
-   Linear in instances, not in cores: you buy machines, not fractions. */
+/* What a target costs. Instances, not fractions of a core: you buy machines. */
 const TARGETS = [10000, 20000, 30000, 50000, 100000];
 const plan = [];
 for (const target of TARGETS) {
@@ -160,7 +185,7 @@ for (const target of TARGETS) {
     const row = { target, instanceCores: cores };
     for (const candidate of candidates) {
       const c = cap(candidate, cores);
-      row[candidate] = c?.capacity ? round(Math.ceil((target / c.capacity) * 10) / 10, 1) : null;
+      row[candidate] = c?.capacity ? Math.ceil(target / c.capacity) : null;
       row[`${candidate}Cores`] = c?.capacity ? Math.ceil(target / c.capacity) * cores : null;
     }
     plan.push(row);
@@ -282,22 +307,19 @@ const soak = candidates.map((candidate) => {
 
 /* --------------------------------------------------------------- integrity */
 
-const ladderFailures = ladder.filter((s) => s.read.bad + s.write.bad > 0).length;
-const resetDrift = ladder
-  .map((s) => s.table?.before?.liveRows)
-  .filter((x) => x != null);
+const gridFailures = grid.filter((s) => s.read.bad + s.write.bad > 0).length;
+const resetDrift = grid.map((s) => s.table?.before?.liveRows).filter((x) => x != null);
 const failedOn = {};
-for (const s of ladder.filter((x) => !x.pass)) {
+for (const s of grid.filter((x) => !x.pass)) {
   for (const why of s.failedOn ?? ['unrecorded']) failedOn[why] = (failedOn[why] ?? 0) + 1;
 }
-const retried = ladder.filter((s) => s.stem.endsWith('_t2'));
 const integrity = {
-  measuredPoints: ladder.length + soakSteps.length,
-  stepsRetried: retried.length,
-  retriesThatPassed: retried.filter((s) => s.pass).length,
-  failedStepsBy: failedOn,
-  answers: [...ladder, ...soakSteps].reduce((a, s) => a + s.read.ok + s.write.ok, 0),
-  pointsWithFailedRequests: ladderFailures,
+  measuredPoints: grid.length + soakSteps.length,
+  ratesWhereRepetitionsDisagreed: curves.filter((c) => c.passed > 0 && c.passed < c.repetitions).length,
+  ratesMeasured: curves.length,
+  pointsBySloBreach: failedOn,
+  answers: [...grid, ...soakSteps].reduce((a, s) => a + s.read.ok + s.write.ok, 0),
+  pointsWithFailedRequests: gridFailures,
   seededRowsBeforeEveryLadderStep: { min: min(resetDrift), max: max(resetDrift) },
   samplerGaps: [...ladder, ...soakSteps].filter((s) => (s.resources?.samples ?? 0) < 3).length,
   events,
@@ -310,20 +332,21 @@ const summary = {
   generated: new Date().toISOString(),
   question: 'An API that verifies an RS256 bearer token on every request and then reads or writes one row: how much mixed traffic does one core carry, in each runtime?',
   estimator: {
-    capacity: 'median of the repetitions; min and max beside it',
-    operatingPoint: 'the measured step at that capacity, in the repetition that produced the median',
+    capacity: 'the highest rate on the grid that met the service level in a majority of the repetitions',
+    operatingPoint: 'the measured window at that rate which met the service level',
+    latency: 'clientP99 is latency-corrected (it includes time a request was due but not yet sent); serverP99 is time to first byte. Where they part company, the generator was falling behind the schedule the service could no longer keep.',
     floorAndDbCeiling: 'best of the repetitions (upper bounds on a host that cannot be quiesced)',
     soak: 'first window dropped; it carries the cost of a pool that has just opened',
     serviceLevel: `both halves of the mix at >= ${cfg.slo.achievedFraction * 100}% of target, p99 <= ${cfg.slo.p99Ms} ms, no failed request`,
   },
   meta,
-  capacity, scaling, plan, tuned, floor, dbCeiling, dbCeilingBest, soak, integrity,
+  capacity, curves, scaling, plan, tuned, floor, dbCeiling, dbCeilingBest, soak, integrity,
 };
 writeFileSync(join(dir, 'summary.json'), JSON.stringify(summary, null, 2) + '\n');
 
 const csv = [
-  ['candidate', 'cores', 'workers', 'capacity_rps', 'capacity_min', 'capacity_max', 'per_core', 'read_p99_ms', 'write_p99_ms', 'cpu_us_per_req', 'db_cpu_us_per_req', 'app_cores', 'db_cores', 'rss_peak_mib'],
-  ...capacity.map((c) => [c.candidate, c.cores, c.workers, c.capacity, c.capacityMin, c.capacityMax, c.perCore, c.readP99Ms, c.writeP99Ms, c.cpuUsPerReq, c.dbCpuUsPerReq, c.appCores, c.dbCores, c.rssPeakMiB]),
+  ['candidate', 'cores', 'rate', 'repetitions', 'passed', 'carried', 'achieved', 'client_p99_ms', 'server_p99_ms', 'p50_ms', 'cpu_us_per_req', 'db_cpu_us_per_req', 'app_cores'],
+  ...curves.map((c) => [c.candidate, c.cores, c.rate, c.repetitions, c.passed, c.carried, c.achieved, c.clientP99Ms, c.serverP99Ms, c.p50Ms, c.cpuUsPerReq, c.dbCpuUsPerReq, c.appCores]),
 ];
 writeFileSync(join(dir, 'summary.csv'), csv.map((r) => r.join(',')).join('\n') + '\n');
 
@@ -331,9 +354,13 @@ const pad = (x, n) => String(x ?? '-').padStart(n);
 const padr = (x, n) => String(x ?? '-').padEnd(n);
 
 console.log(`\ncapacity-${stamp} — ${integrity.measuredPoints} measured points, ${integrity.answers.toLocaleString('en-US')} answers, ${integrity.pointsWithFailedRequests} with a failed request\n`);
-console.log('CAPACITY      cores  pool   rps     min     max  /core  readp99  writep99  cpu-us/req  db-us/req  cores-used  db-cores  rssMiB');
+console.log('CAPACITY      cores  pool  carried  /core  flat-out  used%  clientp99  serverp99  cpu-us/req  db-us/req  cores-used  rssMiB');
 for (const c of capacity) {
-  console.log(`${padr(c.candidate, 12)} ${pad(c.cores, 6)} ${pad(c.workers, 5)} ${pad(c.capacity, 6)} ${pad(c.capacityMin, 7)} ${pad(c.capacityMax, 7)} ${pad(c.perCore, 6)} ${pad(c.readP99Ms, 8)} ${pad(c.writeP99Ms, 9)} ${pad(c.cpuUsPerReq, 11)} ${pad(c.dbCpuUsPerReq, 10)} ${pad(c.appCores, 11)} ${pad(c.dbCores, 9)} ${pad(c.rssPeakMiB, 7)}`);
+  console.log(`${padr(c.candidate, 12)} ${pad(c.cores, 6)} ${pad(c.workers, 4)} ${pad(c.capacity, 8)} ${pad(c.perCore, 6)} ${pad(c.flatOutRps, 9)} ${pad(c.headroomPct, 6)} ${pad(Math.max(c.readP99Ms ?? 0, c.writeP99Ms ?? 0), 10)} ${pad(c.serverP99Ms, 10)} ${pad(c.cpuUsPerReq, 11)} ${pad(c.dbCpuUsPerReq, 10)} ${pad(c.appCores, 11)} ${pad(c.rssPeakMiB, 7)}`);
+}
+console.log('\nCURVE         cores    rate  votes  achieved  clientp99  serverp99  cpu-us/req  carried');
+for (const c of curves) {
+  console.log(`${padr(c.candidate, 12)} ${pad(c.cores, 6)} ${pad(c.rate, 7)} ${pad(`${c.passed}/${c.repetitions}`, 6)} ${pad(c.achieved, 9)} ${pad(c.clientP99Ms, 10)} ${pad(c.serverP99Ms, 10)} ${pad(c.cpuUsPerReq, 11)}  ${c.carried ? 'yes' : ''}`);
 }
 console.log('\nSCALING       ' + coreBudgets.map((n) => `${n}c`.padStart(8)).join('') + '   ' + coreBudgets.map((n) => `eff${n}c`.padStart(8)).join(''));
 for (const s of scaling) {

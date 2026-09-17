@@ -58,7 +58,8 @@ L_CONNS=$(jq -r .ladder.connectionsPerGenerator $CAP)
 L_REPS="${L_REPS:-$(jq -r .ladder.repetitions $CAP)}"
 WARMUP="${WARMUP:-$(jq -r .ladder.warmupSeconds $CAP)}"
 COOL=$(jq -r .ladder.cooldownSeconds $CAP)
-SETTLE=$(jq -r '.ladder.settleSeconds // 6' $CAP)
+SETTLE=$(jq -r '.ladder.settleSeconds // 5' $CAP)
+CEIL_DUR="${CEIL_DUR:-$(jq -r '.ceilingDuration // "15s"' $CAP)}"
 
 T_DUR="${T_DUR:-$(jq -r .tune.duration $CAP)}"
 T_CONNS=$(jq -r .tune.connectionsPerGenerator $CAP)
@@ -178,6 +179,9 @@ half() { # <file> -> {ok,bad,p50ms,p95ms,p99ms,rps}
     p50ms: (((.latencyPercentiles.p50 // 0) * 1000 * 1000 | round) / 1000),
     p95ms: (((.latencyPercentiles.p95 // 0) * 1000 * 1000 | round) / 1000),
     p99ms: (((.latencyPercentiles.p99 // 0) * 1000 * 1000 | round) / 1000),
+    fb50ms: (((.firstBytePercentiles.p50 // 0) * 1000 * 1000 | round) / 1000),
+    fb99ms: (((.firstBytePercentiles.p99 // 0) * 1000 * 1000 | round) / 1000),
+    slowestMs: (((.summary.slowest // 0) * 1000 * 1000 | round) / 1000),
     rps:   (.summary.requestsPerSec // 0)
   }' "$1" 2>/dev/null || echo '{"ok":0,"bad":-1,"p50ms":0,"p95ms":0,"p99ms":0,"rps":0}'
 }
@@ -442,10 +446,68 @@ phase_ladder() {
   done
 }
 
+# The rate grid is anchored to what the same candidate carried flat out at the
+# same core budget in the tuning phase — a number that is stable to a few per
+# cent across repetitions — so the seven points always straddle the knee
+# wherever it happens to be for that candidate.
+tuned_rps() { # <cand> <cores>
+  jq -r --arg c "$1" --argjson n "$2" \
+    'select(.chosen == true and .candidate == $c and .cores == $n) | .totalRps' \
+    "$OUT/tuning.jsonl" 2>/dev/null | tail -1
+}
+
+# Every cell is measured at the same seven rates in every repetition, and the
+# report takes the highest rate that met the service level in a majority of
+# them. There is nothing for a spoiled window to steer: it costs one point in
+# one repetition and the vote absorbs it.
+#
+# The first attempt at this phase was a search — double until a rate fails,
+# then bisect. Two of its cells were decided by a single spoiled window and the
+# third by the knee moving between repetitions. See EXCLUDED.md.
+phase_grid() {
+  log2 "== grid: the service level across a fixed rate grid, voted"
+  local cand c rep wk anchor f rate ceilr ceilw
+  read -r -a FRACS <<< "$(jq -r '.grid.fractions | join(" ")' $CAP)"
+  for rep in $(seq 1 "$L_REPS"); do
+    for c in "${CORES[@]}"; do
+      for cand in "${CANDS[@]}"; do
+        wk=$(chosen_workers "$cand" "$c"); wk=${wk:-32}
+        anchor=$(tuned_rps "$cand" "$c"); anchor=${anchor:-10000}
+        log2 "grid rep=$rep $cand cores=$c workers=$wk anchor=$anchor/s"
+        open_cell "$cand" "$c" "$wk" || continue
+        # What this cell carries flat out at the grid's own connection count,
+        # for the report to stand the service level against.
+        mix "ceil_${cand}_c${c}_r${rep}" app 0 "$L_CONNS" "$CEIL_DUR"
+        ceilr=$(half "$RAW/ceil_${cand}_c${c}_r${rep}.read.json")
+        ceilw=$(half "$RAW/ceil_${cand}_c${c}_r${rep}.write.json")
+        jq -n -c --arg cand "$cand" --argjson cores "$c" --argjson workers "$wk" \
+          --argjson rep "$rep" --argjson read "$ceilr" --argjson write "$ceilw" \
+          --argjson dur "$(secs "$CEIL_DUR")" \
+          '{phase:"cellceiling", candidate:$cand, cores:$cores, workers:$workers, rep:$rep,
+            read:$read, write:$write, totalRps: ((($read.ok + $write.ok) / $dur) | floor)}' >> "$OUT/steps.jsonl"
+        log2 "  flat out: $(jq -n -r --argjson r "$ceilr" --argjson w "$ceilw" --argjson d "$(secs "$CEIL_DUR")" '(($r.ok + $w.ok) / $d) | floor')/s"
+        reset_events
+        for f in "${FRACS[@]}"; do
+          rate=$(round_to "$(awk -v a="$anchor" -v f="$f" 'BEGIN{printf "%d", a * f}')" "$L_GRAIN")
+          [ "$rate" -lt 250 ] && rate=250
+          point "grid_${cand}_c${c}_r${rep}_q${rate}" grid "$cand" "$c" "$wk" "$rate" "$L_DUR" "$L_CONNS" "$rep" >/dev/null
+          sleep "$COOL"
+          reset_events
+        done
+        stop_app
+      done
+    done
+  done
+}
+
+# The highest grid rate this candidate met the service level at in a majority
+# of the repetitions.
 median_capacity() { # <cand> <cores>
   jq -s -r --arg c "$1" --argjson n "$2" \
-    '[.[] | select(.phase == "capacity" and .candidate == $c and .cores == $n) | .capacity]
-     | sort | if length == 0 then 0 else .[(length - 1) / 2 | floor] end' "$OUT/steps.jsonl"
+    '[.[] | select(.phase == "grid" and .candidate == $c and .cores == $n)]
+     | group_by(.targetRate)
+     | map(select((map(select(.pass)) | length) * 2 > length) | .[0].targetRate)
+     | if length == 0 then 0 else max end' "$OUT/steps.jsonl"
 }
 
 # Twenty consecutive one-minute windows at nine tenths of the measured
@@ -514,12 +576,13 @@ main() {
       run_phase phase_floor
       run_phase phase_dbceiling
       run_phase phase_tune
-      run_phase phase_ladder
+      run_phase phase_grid
       run_phase phase_soak ;;
     --floor)     phase_floor ;;
     --dbceiling) phase_dbceiling ;;
     --tune)      phase_tune ;;
     --ladder)    phase_ladder ;;
+    --grid)      phase_grid ;;
     --soak)      phase_soak ;;
     *) log "unknown mode $MODE"; exit 2 ;;
   esac

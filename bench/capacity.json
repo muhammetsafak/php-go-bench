@@ -38,8 +38,8 @@
     "connectionsPerGenerator": 128,
     "repetitions": 3,
     "warmupSeconds": 10,
-    "cooldownSeconds": 4,
-    "settleSeconds": 6,
+    "cooldownSeconds": 3,
+    "settleSeconds": 5,
     "retryFailedStep": true,
     "note": "A rate counts as carried only if both halves of the mix arrive at >= 99% of their target and both stay under the p99 budget, with no failed request. A failing window is measured a second time before it is believed: in an exponential search a false negative turns the search around and cannot be recovered from."
   },
@@ -98,5 +98,20 @@
       "2": 1,
       "4": 2
     }
-  }
+  },
+  "grid": {
+    "fractions": [
+      0.25,
+      0.4,
+      0.55,
+      0.7,
+      0.85,
+      1.0,
+      1.15
+    ],
+    "anchor": "the candidate's own flat-out rate at that core budget, from the tune phase",
+    "vote": "a rate is carried if it met the service level in a majority of the repetitions",
+    "note": "Seven fixed rates per cell, the same seven in every repetition, voted. Replaces an exponential-then-bisect search: the knee is a cliff rather than a slope and it moves between repetitions, so a search lands wherever the cliff was that time and one spoiled window cannot be recovered from. A grid has nothing to steer."
+  },
+  "ceilingDuration": "15s"
 }
