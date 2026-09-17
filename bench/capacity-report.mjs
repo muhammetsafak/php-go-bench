@@ -321,7 +321,7 @@ const integrity = {
   answers: [...grid, ...soakSteps].reduce((a, s) => a + s.read.ok + s.write.ok, 0),
   pointsWithFailedRequests: gridFailures,
   seededRowsBeforeEveryLadderStep: { min: min(resetDrift), max: max(resetDrift) },
-  samplerGaps: [...ladder, ...soakSteps].filter((s) => (s.resources?.samples ?? 0) < 3).length,
+  samplerGaps: [...grid, ...soakSteps].filter((s) => (s.resources?.samples ?? 0) < 3).length,
   events,
 };
 
