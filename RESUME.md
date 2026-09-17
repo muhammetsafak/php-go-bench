@@ -1,6 +1,31 @@
-# Nerede kaldık — 2026-09-17, 14:45 UTC
+# Nerede kaldık — 2026-09-17, 17:30 UTC
 
 Bu dosya bir çalışma notudur, depo belgesi değil. İş bitince silinebilir.
+
+## ÖNCE BUNU OKU: ana makine meşgul, ölçüm yapılamıyor
+
+17:25 UTC'de ana makinede ~20 headless Chromium (Playwright) süreci toplam
+**%1019 CPU** kullanıyordu — 12 çekirdekli makinenin on çekirdeğinden fazlası.
+Docker VM'ine %94 kalmıştı. `contextator-dev-db` (pgvector) konteyneri de
+17:15'te açılmış (boşta, sorun değil).
+
+Bu koşullarda ölçüm anlamsız: go 4 çekirdekte tam gaz 17.490/sn ölçüldü,
+sakin makinedeki değeri 55.715/sn. Tavan koşusu durduruldu.
+
+**Ölçüm yeniden koşulmadan önce makine boş olmalı.** Kontrol:
+
+```sh
+ps -Ao pcpu,comm -r | head -5          # ilk sıradakiler %5'in altında olmalı
+uptime                                  # load average tek haneli olmalı
+```
+
+Sonra:
+
+```sh
+cd ~/Documents/Projects/MuhammetSafak/php-go-bench
+caffeinate -dimsu ./bench/capacity.sh --ceiling    # ~47 dk, STAMP=2026-09-17
+node bench/capacity-report.mjs 2026-09-17
+```
 
 ## Şu an ne koşuyor
 

@@ -113,5 +113,13 @@
     "vote": "a rate is carried if it met the service level in a majority of the repetitions",
     "note": "Seven fixed rates per cell, the same seven in every repetition, voted. Replaces an exponential-then-bisect search: the knee is a cliff rather than a slope and it moves between repetitions, so a search lands wherever the cliff was that time and one spoiled window cannot be recovered from. A grid has nothing to steer."
   },
-  "ceilingDuration": "15s"
+  "ceiling": {
+    "duration": "20s",
+    "repetitions": 5,
+    "probeDuration": "10s",
+    "probeMargin": 1.15,
+    "probeAcceptance": 0.95,
+    "note": "What each cell carries flat out. Two guards, for two different ways the number can be wrong. A generator probe runs before every repetition \u2014 an nginx with no application code on the candidate's own cores, driven by the same pair of generators at more than the rate the candidate is expected to reach; a repetition whose probe fell short of 95% of its target measured the generator and is excluded. And the estimator is the BEST of the valid repetitions, because the system warms across repetitions: the same cell, with a fresh container and a fresh database copy each time, was measured at 36,538 then 43,776 then 55,542 requests a second in three consecutive repetitions, with CPU per request falling 85 -> 77 -> 69 microseconds. The candidate is identical each time; what improves is the host underneath it. Interference only ever subtracts.",
+    "connectionsPerGenerator": 64
+  }
 }

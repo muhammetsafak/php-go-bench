@@ -59,7 +59,10 @@ L_REPS="${L_REPS:-$(jq -r .ladder.repetitions $CAP)}"
 WARMUP="${WARMUP:-$(jq -r .ladder.warmupSeconds $CAP)}"
 COOL=$(jq -r .ladder.cooldownSeconds $CAP)
 SETTLE=$(jq -r '.ladder.settleSeconds // 5' $CAP)
-CEIL_DUR="${CEIL_DUR:-$(jq -r '.ceilingDuration // "15s"' $CAP)}"
+CEIL_DUR="${CEIL_DUR:-$(jq -r '.ceiling.duration // "15s"' $CAP)}"
+CEIL_REPS="${CEIL_REPS:-$(jq -r '.ceiling.repetitions // 5' $CAP)}"
+CEIL_CONNS="${CEIL_CONNS:-$(jq -r '.ceiling.connectionsPerGenerator // 64' $CAP)}"
+PROBE_DUR="${PROBE_DUR:-$(jq -r '.ceiling.probeDuration // "10s"' $CAP)}"
 
 T_DUR="${T_DUR:-$(jq -r .tune.duration $CAP)}"
 T_CONNS=$(jq -r .tune.connectionsPerGenerator $CAP)
@@ -502,6 +505,80 @@ phase_grid() {
 
 # The highest grid rate this candidate met the service level at in a majority
 # of the repetitions.
+# What each cell carries when nothing is held back — with a gate that says
+# whether the measurement was allowed to happen at all.
+#
+# The mixed load needs two generators running at once, and at high rates the
+# two of them together do not always get the four cores they were given: macOS
+# decides which physical core each of the VM's vCPU threads lands on, and the
+# grid run caught the consequence — a four-core Go service measured at 15,301
+# requests a second while using 1.57 of its 4 cores. An application that is
+# idle is not an application that is saturated. The number was the generator's,
+# not the candidate's.
+#
+# So every repetition is preceded by the same probe the 2026-09-16 run used,
+# with the difference that it drives the pair of generators rather than one:
+# an nginx that runs no application code, on the candidate's own cores, at more
+# than the rate the candidate is expected to reach. A repetition whose probe
+# fell short is recorded and excluded — it measured the generator.
+phase_ceiling() {
+  log2 "== ceiling: what each cell carries flat out, behind a generator probe"
+  local cand c rep wk anchor ptarget pr pw pdel ok r w total cpus
+  for rep in $(seq 1 "$CEIL_REPS"); do
+    for c in "${CORES[@]}"; do
+      for cand in "${CANDS[@]}"; do
+        wk=$(chosen_workers "$cand" "$c"); wk=${wk:-32}
+        anchor=$(tuned_rps "$cand" "$c"); anchor=${anchor:-10000}
+        ptarget=$(awk -v a="$anchor" 'BEGIN{v=int(a*1.15); print (v > 60000 ? 60000 : v)}')
+        case "$c" in 1) cpus=0 ;; 2) cpus=0-1 ;; 3) cpus=0-2 ;; 4) cpus=0-3 ;; esac
+        log2 "ceiling rep=$rep $cand cores=$c workers=$wk probe=$ptarget/s"
+
+        stop_app
+        fresh_db_safe || continue
+        docker rm -f pgb-probe >/dev/null 2>&1 || true
+        docker run -d --name pgb-probe --network "$NET" --network-alias probe \
+          --cpuset-cpus "$cpus" --memory "$MEM_APP" --ulimit nofile=65536:65536 pgb/probe >/dev/null
+        sleep 2
+        mix "gprobe_${cand}_c${c}_r${rep}" probe "$ptarget" "$CEIL_CONNS" "$PROBE_DUR" no
+        docker rm -f pgb-probe >/dev/null 2>&1 || true
+        pr=$(half "$RAW/gprobe_${cand}_c${c}_r${rep}.read.json")
+        pw=$(half "$RAW/gprobe_${cand}_c${c}_r${rep}.write.json")
+        pdel=$(jq -n -r --argjson r "$pr" --argjson w "$pw" --argjson d "$(secs "$PROBE_DUR")" \
+          '(($r.ok + $w.ok) / $d) | floor')
+        ok=$(awk -v d="$pdel" -v t="$ptarget" 'BEGIN{print (d >= t * 0.95) ? "true" : "false"}')
+        log2 "  probe delivered $pdel/$ptarget per second -> valid=$ok"
+
+        start_app_sized "$cand" "$c" "$wk"
+        if ! wait_app; then
+          note "{\"error\":\"never-ready\",\"candidate\":\"$cand\",\"cores\":$c}"
+          stop_app; continue
+        fi
+        warm
+        mix "ceil2_${cand}_c${c}_r${rep}" app 0 "$CEIL_CONNS" "$CEIL_DUR"
+        r=$(half "$RAW/ceil2_${cand}_c${c}_r${rep}.read.json")
+        w=$(half "$RAW/ceil2_${cand}_c${c}_r${rep}.write.json")
+        total=$(jq -n -r --argjson r "$r" --argjson w "$w" --argjson d "$(secs "$CEIL_DUR")" \
+          '(($r.ok + $w.ok) / $d) | floor')
+        jq -n -c --arg cand "$cand" --argjson cores "$c" --argjson workers "$wk" --argjson rep "$rep" \
+          --argjson read "$r" --argjson write "$w" --argjson total "$total" \
+          --argjson probeTarget "$ptarget" --argjson probeDelivered "$pdel" --argjson valid "$ok" \
+          --argjson resrc "$(res "$RAW/ceil2_${cand}_c${c}_r${rep}.res.jsonl")" \
+          --argjson dur "$(secs "$CEIL_DUR")" \
+          '{phase:"ceiling", candidate:$cand, cores:$cores, workers:$workers, rep:$rep,
+            read:$read, write:$write, totalRps:$total,
+            probeTarget:$probeTarget, probeDelivered:$probeDelivered, valid:$valid,
+            resources:$resrc,
+            cpuUsPerReq: (if ($read.ok + $write.ok) > 0 then (($resrc.appCpuUs / ($read.ok + $write.ok) * 100 | round) / 100) else null end),
+            dbCpuUsPerReq: (if ($read.ok + $write.ok) > 0 then (($resrc.dbCpuUs / ($read.ok + $write.ok) * 100 | round) / 100) else null end),
+            appCores: (($resrc.appCpuUs / 1000000 / $dur * 100 | round) / 100),
+            dbCores: (($resrc.dbCpuUs / 1000000 / $dur * 100 | round) / 100)}' >> "$OUT/steps.jsonl"
+        log2 "  flat out $total/s  app=$(jq -n -r --argjson x "$(res "$RAW/ceil2_${cand}_c${c}_r${rep}.res.jsonl")" --argjson d "$(secs "$CEIL_DUR")" '(($x.appCpuUs/1000000/$d)*100|round)/100') cores  valid=$ok"
+        stop_app
+      done
+    done
+  done
+}
+
 median_capacity() { # <cand> <cores>
   jq -s -r --arg c "$1" --argjson n "$2" \
     '[.[] | select(.phase == "grid" and .candidate == $c and .cores == $n)]
@@ -583,6 +660,7 @@ main() {
     --tune)      phase_tune ;;
     --ladder)    phase_ladder ;;
     --grid)      phase_grid ;;
+    --ceiling)   phase_ceiling ;;
     --soak)      phase_soak ;;
     *) log "unknown mode $MODE"; exit 2 ;;
   esac
