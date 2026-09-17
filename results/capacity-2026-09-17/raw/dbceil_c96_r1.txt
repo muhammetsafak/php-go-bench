@@ -1,0 +1,20 @@
+pgbench (17.11)
+progress: 5.0 s, 58238.2 tps, lat 1.545 ms stddev 0.909, 0 failed
+progress: 10.0 s, 60128.9 tps, lat 1.584 ms stddev 0.751, 0 failed
+progress: 15.0 s, 61699.3 tps, lat 1.544 ms stddev 0.736, 0 failed
+progress: 20.0 s, 65393.8 tps, lat 1.458 ms stddev 0.747, 0 failed
+progress: 25.0 s, 66731.5 tps, lat 1.430 ms stddev 0.625, 0 failed
+progress: 30.0 s, 57670.1 tps, lat 1.647 ms stddev 0.732, 0 failed
+transaction type: /sql/pgbench-insert.sql
+scaling factor: 1
+query mode: simple
+number of clients: 96
+number of threads: 8
+maximum number of tries: 1
+duration: 30 s
+number of transactions actually processed: 1849403
+number of failed transactions: 0 (0.000%)
+latency average = 1.532 ms
+latency stddev = 0.791 ms
+initial connection time = 293.108 ms
+tps = 62130.994931 (without initial connection time)

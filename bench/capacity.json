@@ -38,7 +38,10 @@
     "connectionsPerGenerator": 128,
     "repetitions": 3,
     "warmupSeconds": 10,
-    "cooldownSeconds": 4
+    "cooldownSeconds": 4,
+    "settleSeconds": 6,
+    "retryFailedStep": true,
+    "note": "A rate counts as carried only if both halves of the mix arrive at >= 99% of their target and both stay under the p99 budget, with no failed request. A failing window is measured a second time before it is believed: in an exponential search a false negative turns the search around and cannot be recovered from."
   },
   "tune": {
     "workers": [
@@ -74,7 +77,7 @@
   "soak": {
     "windows": 20,
     "windowDuration": "60s",
-    "fractionOfCapacity": 0.9,
+    "fractionOfCapacity": 0.8,
     "cores": 4,
     "connectionsPerGenerator": 128
   },

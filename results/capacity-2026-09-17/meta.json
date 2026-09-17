@@ -1,0 +1,135 @@
+{
+  "stamp": "2026-09-17",
+  "mode": "--all",
+  "started": "2026-09-17T05:24:12Z",
+  "host": {
+    "cpu": "Apple M4 Pro",
+    "cores": 12,
+    "macos": "27.0",
+    "docker": {
+      "dockerVersion": "29.8.0",
+      "kernel": "7.0.12-linuxkit",
+      "os": "Docker Desktop",
+      "arch": "aarch64",
+      "vcpus": 12,
+      "memoryBytes": 8319238144
+    }
+  },
+  "versions": {
+    "oha": "oha 1.15.0",
+    "go": "go version go1.27.1 linux/arm64",
+    "phpFpm": "8.5.10 NTS",
+    "phpFrankenphp": "8.5.10 ZTS",
+    "frankenphp": "FrankenPHP v1.12.7 PHP 8.5.10 Caddy v2.11.4 h1:XKxkMTgNSizEvKG6QHue6cAsFOteU2qA61w2tKkCWi0=",
+    "nginx": "nginx version: nginx/1.26.3",
+    "postgres": "17.11",
+    "pgx": "v5.11.0",
+    "golangJwt": "v5.3.1",
+    "firebasePhpJwt": "v7.1.1"
+  },
+  "config": {
+    "candidates": [
+      "go",
+      "fpm",
+      "frankenphp"
+    ],
+    "mix": {
+      "readShare": 0.5,
+      "read": {
+        "method": "GET",
+        "path": "/events/[1-9][0-9]{0,5}",
+        "randomPath": true,
+        "what": "token verification (scope events:read), then one row by primary key out of the seeded 1,000,000"
+      },
+      "write": {
+        "method": "POST",
+        "path": "/events",
+        "body": "{\"kind\":\"page_view\",\"payload\":{\"path\":\"/pricing\",\"ms\":182,\"ref\":\"newsletter\"}}",
+        "what": "token verification (scope events:write), JSON body validation, then one INSERT ... RETURNING id"
+      }
+    },
+    "cores": [
+      1,
+      2,
+      4
+    ],
+    "slo": {
+      "p99Ms": 10,
+      "achievedFraction": 0.99,
+      "note": "A rate counts as carried only if both halves of the mix arrive at >= 99% of their target and both stay under the p99 budget, with no non-2xx answer and no transport error."
+    },
+    "ladder": {
+      "startRate": 3000,
+      "maxRate": 60000,
+      "refinements": 4,
+      "granularity": 250,
+      "duration": "30s",
+      "connectionsPerGenerator": 128,
+      "repetitions": 3,
+      "warmupSeconds": 10,
+      "cooldownSeconds": 4
+    },
+    "tune": {
+      "workers": [
+        8,
+        16,
+        32,
+        64
+      ],
+      "duration": "20s",
+      "connectionsPerGenerator": 64,
+      "repetitions": 2,
+      "note": "Closed loop, flat out, two repetitions, best of the two. Each candidate gets the pool size that carried the most mixed traffic at that core budget; the whole table is kept so the choice can be checked. Best rather than median for the same reason the ceiling phase of bench/run.sh uses it: the host is a laptop that cannot be quiesced, and interference only ever subtracts. Flat out the two halves do not hold the 50/50 ratio — reads are cheaper, so more of them get through. That is fine for ranking pool sizes, which is all this phase decides."
+    },
+    "floor": {
+      "duration": "8s",
+      "connectionsPerGenerator": 64,
+      "rate": 60000,
+      "repetitions": 3,
+      "note": "An nginx that runs no application code, on the same cores as the candidate. Nothing that parses a token can beat it."
+    },
+    "dbCeiling": {
+      "clients": [
+        16,
+        32,
+        64,
+        96
+      ],
+      "duration": "30s",
+      "repetitions": 3,
+      "note": "pgbench inserting the same row shape straight into PostgreSQL, with no HTTP and no token in the way: where the database itself stops, and therefore where a comparison between the runtimes would stop meaning anything. pgbench needs enough threads of its own (-j) not to become the limit it is measuring.",
+      "jobs": 8
+    },
+    "soak": {
+      "windows": 20,
+      "windowDuration": "60s",
+      "fractionOfCapacity": 0.9,
+      "cores": 4,
+      "connectionsPerGenerator": 128
+    },
+    "budget": {
+      "appCpus": "0-3",
+      "appMemory": "1g",
+      "db": {
+        "cpus": "4-7",
+        "cores": 4,
+        "memory": "2g"
+      },
+      "load": {
+        "cpus": "8-11",
+        "memory": "1500m"
+      },
+      "nginxWorkersForCores": {
+        "1": 1,
+        "2": 1,
+        "4": 2
+      }
+    }
+  },
+  "finished": [
+    {
+      "mode": "--all",
+      "at": "2026-09-17T09:28:55Z"
+    }
+  ]
+}

@@ -1,0 +1,1656 @@
+{
+  "stamp": "2026-09-17",
+  "generated": "2026-09-17T09:29:36.147Z",
+  "question": "An API that verifies an RS256 bearer token on every request and then reads or writes one row: how much mixed traffic does one core carry, in each runtime?",
+  "estimator": {
+    "capacity": "median of the repetitions; min and max beside it",
+    "operatingPoint": "the measured step at that capacity, in the repetition that produced the median",
+    "floorAndDbCeiling": "best of the repetitions (upper bounds on a host that cannot be quiesced)",
+    "soak": "first window dropped; it carries the cost of a pool that has just opened",
+    "serviceLevel": "both halves of the mix at >= 99% of target, p99 <= 10 ms, no failed request"
+  },
+  "meta": {
+    "stamp": "2026-09-17",
+    "mode": "--all",
+    "started": "2026-09-17T05:24:12Z",
+    "host": {
+      "cpu": "Apple M4 Pro",
+      "cores": 12,
+      "macos": "27.0",
+      "docker": {
+        "dockerVersion": "29.8.0",
+        "kernel": "7.0.12-linuxkit",
+        "os": "Docker Desktop",
+        "arch": "aarch64",
+        "vcpus": 12,
+        "memoryBytes": 8319238144
+      }
+    },
+    "versions": {
+      "oha": "oha 1.15.0",
+      "go": "go version go1.27.1 linux/arm64",
+      "phpFpm": "8.5.10 NTS",
+      "phpFrankenphp": "8.5.10 ZTS",
+      "frankenphp": "FrankenPHP v1.12.7 PHP 8.5.10 Caddy v2.11.4 h1:XKxkMTgNSizEvKG6QHue6cAsFOteU2qA61w2tKkCWi0=",
+      "nginx": "nginx version: nginx/1.26.3",
+      "postgres": "17.11",
+      "pgx": "v5.11.0",
+      "golangJwt": "v5.3.1",
+      "firebasePhpJwt": "v7.1.1"
+    },
+    "config": {
+      "candidates": [
+        "go",
+        "fpm",
+        "frankenphp"
+      ],
+      "mix": {
+        "readShare": 0.5,
+        "read": {
+          "method": "GET",
+          "path": "/events/[1-9][0-9]{0,5}",
+          "randomPath": true,
+          "what": "token verification (scope events:read), then one row by primary key out of the seeded 1,000,000"
+        },
+        "write": {
+          "method": "POST",
+          "path": "/events",
+          "body": "{\"kind\":\"page_view\",\"payload\":{\"path\":\"/pricing\",\"ms\":182,\"ref\":\"newsletter\"}}",
+          "what": "token verification (scope events:write), JSON body validation, then one INSERT ... RETURNING id"
+        }
+      },
+      "cores": [
+        1,
+        2,
+        4
+      ],
+      "slo": {
+        "p99Ms": 10,
+        "achievedFraction": 0.99,
+        "note": "A rate counts as carried only if both halves of the mix arrive at >= 99% of their target and both stay under the p99 budget, with no non-2xx answer and no transport error."
+      },
+      "ladder": {
+        "startRate": 3000,
+        "maxRate": 60000,
+        "refinements": 4,
+        "granularity": 250,
+        "duration": "30s",
+        "connectionsPerGenerator": 128,
+        "repetitions": 3,
+        "warmupSeconds": 10,
+        "cooldownSeconds": 4
+      },
+      "tune": {
+        "workers": [
+          8,
+          16,
+          32,
+          64
+        ],
+        "duration": "20s",
+        "connectionsPerGenerator": 64,
+        "repetitions": 2,
+        "note": "Closed loop, flat out, two repetitions, best of the two. Each candidate gets the pool size that carried the most mixed traffic at that core budget; the whole table is kept so the choice can be checked. Best rather than median for the same reason the ceiling phase of bench/run.sh uses it: the host is a laptop that cannot be quiesced, and interference only ever subtracts. Flat out the two halves do not hold the 50/50 ratio — reads are cheaper, so more of them get through. That is fine for ranking pool sizes, which is all this phase decides."
+      },
+      "floor": {
+        "duration": "8s",
+        "connectionsPerGenerator": 64,
+        "rate": 60000,
+        "repetitions": 3,
+        "note": "An nginx that runs no application code, on the same cores as the candidate. Nothing that parses a token can beat it."
+      },
+      "dbCeiling": {
+        "clients": [
+          16,
+          32,
+          64,
+          96
+        ],
+        "duration": "30s",
+        "repetitions": 3,
+        "note": "pgbench inserting the same row shape straight into PostgreSQL, with no HTTP and no token in the way: where the database itself stops, and therefore where a comparison between the runtimes would stop meaning anything. pgbench needs enough threads of its own (-j) not to become the limit it is measuring.",
+        "jobs": 8
+      },
+      "soak": {
+        "windows": 20,
+        "windowDuration": "60s",
+        "fractionOfCapacity": 0.9,
+        "cores": 4,
+        "connectionsPerGenerator": 128
+      },
+      "budget": {
+        "appCpus": "0-3",
+        "appMemory": "1g",
+        "db": {
+          "cpus": "4-7",
+          "cores": 4,
+          "memory": "2g"
+        },
+        "load": {
+          "cpus": "8-11",
+          "memory": "1500m"
+        },
+        "nginxWorkersForCores": {
+          "1": 1,
+          "2": 1,
+          "4": 2
+        }
+      }
+    },
+    "finished": [
+      {
+        "mode": "--all",
+        "at": "2026-09-17T09:28:55Z"
+      }
+    ]
+  },
+  "capacity": [
+    {
+      "candidate": "go",
+      "cores": 1,
+      "workers": 16,
+      "repetitions": 3,
+      "capacity": 14250,
+      "capacityMin": 4500,
+      "capacityMax": 15000,
+      "spreadPct": 73.7,
+      "perCore": 14250,
+      "firstFailingRate": 15000,
+      "fromRep": 3,
+      "readP50Ms": 0.919,
+      "readP99Ms": 4.435,
+      "writeP50Ms": 1.025,
+      "writeP99Ms": 4.822,
+      "cpuUsPerReq": 60.52,
+      "dbCpuUsPerReq": 37.06,
+      "appCores": 0.86,
+      "dbCores": 0.53,
+      "rssPeakMiB": 21.9,
+      "answered": 427486,
+      "reqPerCpuSecond": 16522
+    },
+    {
+      "candidate": "go",
+      "cores": 2,
+      "workers": 64,
+      "repetitions": 3,
+      "capacity": 14250,
+      "capacityMin": 14250,
+      "capacityMax": 18000,
+      "spreadPct": 26.3,
+      "perCore": 7125,
+      "firstFailingRate": 15000,
+      "fromRep": 1,
+      "readP50Ms": 0.478,
+      "readP99Ms": 3.953,
+      "writeP50Ms": 0.687,
+      "writeP99Ms": 4.355,
+      "cpuUsPerReq": 74.35,
+      "dbCpuUsPerReq": 47.67,
+      "appCores": 1.06,
+      "dbCores": 0.68,
+      "rssPeakMiB": 31.6,
+      "answered": 427479,
+      "reqPerCpuSecond": 13450
+    },
+    {
+      "candidate": "go",
+      "cores": 4,
+      "workers": 64,
+      "repetitions": 3,
+      "capacity": 18750,
+      "capacityMin": 1250,
+      "capacityMax": 48000,
+      "spreadPct": 249.3,
+      "perCore": 4688,
+      "firstFailingRate": 19500,
+      "fromRep": 3,
+      "readP50Ms": 0.44,
+      "readP99Ms": 3.397,
+      "writeP50Ms": 0.777,
+      "writeP99Ms": 5.146,
+      "cpuUsPerReq": 100.97,
+      "dbCpuUsPerReq": 66.46,
+      "appCores": 1.89,
+      "dbCores": 1.25,
+      "rssPeakMiB": 33.7,
+      "answered": 562481,
+      "reqPerCpuSecond": 9904
+    },
+    {
+      "candidate": "fpm",
+      "cores": 1,
+      "workers": 8,
+      "repetitions": 3,
+      "capacity": 3750,
+      "capacityMin": 3000,
+      "capacityMax": 5500,
+      "spreadPct": 66.7,
+      "perCore": 3750,
+      "firstFailingRate": 4000,
+      "fromRep": 3,
+      "readP50Ms": 0.802,
+      "readP99Ms": 2.562,
+      "writeP50Ms": 0.865,
+      "writeP99Ms": 2.692,
+      "cpuUsPerReq": 179.35,
+      "dbCpuUsPerReq": 58.43,
+      "appCores": 0.67,
+      "dbCores": 0.22,
+      "rssPeakMiB": 24.2,
+      "answered": 112498,
+      "reqPerCpuSecond": 5576
+    },
+    {
+      "candidate": "fpm",
+      "cores": 2,
+      "workers": 16,
+      "repetitions": 3,
+      "capacity": 4250,
+      "capacityMin": 2750,
+      "capacityMax": 6750,
+      "spreadPct": 94.1,
+      "perCore": 2125,
+      "firstFailingRate": 4500,
+      "fromRep": 1,
+      "readP50Ms": 0.957,
+      "readP99Ms": 4.372,
+      "writeP50Ms": 1.078,
+      "writeP99Ms": 5,
+      "cpuUsPerReq": 323.15,
+      "dbCpuUsPerReq": 134.82,
+      "appCores": 1.37,
+      "dbCores": 0.57,
+      "rssPeakMiB": 34.6,
+      "answered": 127500,
+      "reqPerCpuSecond": 3095
+    },
+    {
+      "candidate": "fpm",
+      "cores": 4,
+      "workers": 32,
+      "repetitions": 3,
+      "capacity": 8000,
+      "capacityMin": 6000,
+      "capacityMax": 18000,
+      "spreadPct": 150,
+      "perCore": 2000,
+      "firstFailingRate": 8250,
+      "fromRep": 1,
+      "readP50Ms": 0.626,
+      "readP99Ms": 2.103,
+      "writeP50Ms": 0.865,
+      "writeP99Ms": 2.987,
+      "cpuUsPerReq": 266.39,
+      "dbCpuUsPerReq": 101.5,
+      "appCores": 2.13,
+      "dbCores": 0.81,
+      "rssPeakMiB": 59.7,
+      "answered": 239995,
+      "reqPerCpuSecond": 3754
+    },
+    {
+      "candidate": "frankenphp",
+      "cores": 1,
+      "workers": 8,
+      "repetitions": 3,
+      "capacity": 6000,
+      "capacityMin": 5500,
+      "capacityMax": 6500,
+      "spreadPct": 16.7,
+      "perCore": 6000,
+      "firstFailingRate": 6500,
+      "fromRep": 1,
+      "readP50Ms": 0.57,
+      "readP99Ms": 3.626,
+      "writeP50Ms": 0.712,
+      "writeP99Ms": 3.754,
+      "cpuUsPerReq": 108.67,
+      "dbCpuUsPerReq": 40.53,
+      "appCores": 0.65,
+      "dbCores": 0.24,
+      "rssPeakMiB": 60.5,
+      "answered": 179996,
+      "reqPerCpuSecond": 9202
+    },
+    {
+      "candidate": "frankenphp",
+      "cores": 2,
+      "workers": 8,
+      "repetitions": 3,
+      "capacity": 4750,
+      "capacityMin": 4500,
+      "capacityMax": 6000,
+      "spreadPct": 31.6,
+      "perCore": 2375,
+      "firstFailingRate": 5000,
+      "fromRep": 3,
+      "readP50Ms": 0.344,
+      "readP99Ms": 1.558,
+      "writeP50Ms": 0.494,
+      "writeP99Ms": 1.853,
+      "cpuUsPerReq": 138.61,
+      "dbCpuUsPerReq": 44.96,
+      "appCores": 0.66,
+      "dbCores": 0.21,
+      "rssPeakMiB": 61.1,
+      "answered": 142498,
+      "reqPerCpuSecond": 7214
+    },
+    {
+      "candidate": "frankenphp",
+      "cores": 4,
+      "workers": 8,
+      "repetitions": 3,
+      "capacity": 5250,
+      "capacityMin": 5250,
+      "capacityMax": 19500,
+      "spreadPct": 271.4,
+      "perCore": 1313,
+      "firstFailingRate": 5500,
+      "fromRep": 1,
+      "readP50Ms": 0.335,
+      "readP99Ms": 1.377,
+      "writeP50Ms": 0.526,
+      "writeP99Ms": 2.113,
+      "cpuUsPerReq": 181.05,
+      "dbCpuUsPerReq": 56.55,
+      "appCores": 0.95,
+      "dbCores": 0.3,
+      "rssPeakMiB": 63,
+      "answered": 157497,
+      "reqPerCpuSecond": 5523
+    }
+  ],
+  "scaling": [
+    {
+      "candidate": "go",
+      "base": 14250,
+      "c1": 14250,
+      "c1PerCore": 14250,
+      "c1Efficiency": 1,
+      "c2": 14250,
+      "c2PerCore": 7125,
+      "c2Efficiency": 0.5,
+      "c4": 18750,
+      "c4PerCore": 4688,
+      "c4Efficiency": 0.329
+    },
+    {
+      "candidate": "fpm",
+      "base": 3750,
+      "c1": 3750,
+      "c1PerCore": 3750,
+      "c1Efficiency": 1,
+      "c2": 4250,
+      "c2PerCore": 2125,
+      "c2Efficiency": 0.567,
+      "c4": 8000,
+      "c4PerCore": 2000,
+      "c4Efficiency": 0.533
+    },
+    {
+      "candidate": "frankenphp",
+      "base": 6000,
+      "c1": 6000,
+      "c1PerCore": 6000,
+      "c1Efficiency": 1,
+      "c2": 4750,
+      "c2PerCore": 2375,
+      "c2Efficiency": 0.396,
+      "c4": 5250,
+      "c4PerCore": 1313,
+      "c4Efficiency": 0.219
+    }
+  ],
+  "plan": [
+    {
+      "target": 10000,
+      "instanceCores": 1,
+      "go": 0.8,
+      "goCores": 1,
+      "fpm": 2.7,
+      "fpmCores": 3,
+      "frankenphp": 1.7,
+      "frankenphpCores": 2
+    },
+    {
+      "target": 10000,
+      "instanceCores": 2,
+      "go": 0.8,
+      "goCores": 2,
+      "fpm": 2.4,
+      "fpmCores": 6,
+      "frankenphp": 2.2,
+      "frankenphpCores": 6
+    },
+    {
+      "target": 10000,
+      "instanceCores": 4,
+      "go": 0.6,
+      "goCores": 4,
+      "fpm": 1.3,
+      "fpmCores": 8,
+      "frankenphp": 2,
+      "frankenphpCores": 8
+    },
+    {
+      "target": 20000,
+      "instanceCores": 1,
+      "go": 1.5,
+      "goCores": 2,
+      "fpm": 5.4,
+      "fpmCores": 6,
+      "frankenphp": 3.4,
+      "frankenphpCores": 4
+    },
+    {
+      "target": 20000,
+      "instanceCores": 2,
+      "go": 1.5,
+      "goCores": 4,
+      "fpm": 4.8,
+      "fpmCores": 10,
+      "frankenphp": 4.3,
+      "frankenphpCores": 10
+    },
+    {
+      "target": 20000,
+      "instanceCores": 4,
+      "go": 1.1,
+      "goCores": 8,
+      "fpm": 2.5,
+      "fpmCores": 12,
+      "frankenphp": 3.9,
+      "frankenphpCores": 16
+    },
+    {
+      "target": 30000,
+      "instanceCores": 1,
+      "go": 2.2,
+      "goCores": 3,
+      "fpm": 8,
+      "fpmCores": 8,
+      "frankenphp": 5,
+      "frankenphpCores": 5
+    },
+    {
+      "target": 30000,
+      "instanceCores": 2,
+      "go": 2.2,
+      "goCores": 6,
+      "fpm": 7.1,
+      "fpmCores": 16,
+      "frankenphp": 6.4,
+      "frankenphpCores": 14
+    },
+    {
+      "target": 30000,
+      "instanceCores": 4,
+      "go": 1.6,
+      "goCores": 8,
+      "fpm": 3.8,
+      "fpmCores": 16,
+      "frankenphp": 5.8,
+      "frankenphpCores": 24
+    },
+    {
+      "target": 50000,
+      "instanceCores": 1,
+      "go": 3.6,
+      "goCores": 4,
+      "fpm": 13.4,
+      "fpmCores": 14,
+      "frankenphp": 8.4,
+      "frankenphpCores": 9
+    },
+    {
+      "target": 50000,
+      "instanceCores": 2,
+      "go": 3.6,
+      "goCores": 8,
+      "fpm": 11.8,
+      "fpmCores": 24,
+      "frankenphp": 10.6,
+      "frankenphpCores": 22
+    },
+    {
+      "target": 50000,
+      "instanceCores": 4,
+      "go": 2.7,
+      "goCores": 12,
+      "fpm": 6.3,
+      "fpmCores": 28,
+      "frankenphp": 9.6,
+      "frankenphpCores": 40
+    },
+    {
+      "target": 100000,
+      "instanceCores": 1,
+      "go": 7.1,
+      "goCores": 8,
+      "fpm": 26.7,
+      "fpmCores": 27,
+      "frankenphp": 16.7,
+      "frankenphpCores": 17
+    },
+    {
+      "target": 100000,
+      "instanceCores": 2,
+      "go": 7.1,
+      "goCores": 16,
+      "fpm": 23.6,
+      "fpmCores": 48,
+      "frankenphp": 21.1,
+      "frankenphpCores": 44
+    },
+    {
+      "target": 100000,
+      "instanceCores": 4,
+      "go": 5.4,
+      "goCores": 24,
+      "fpm": 12.5,
+      "fpmCores": 52,
+      "frankenphp": 19.1,
+      "frankenphpCores": 80
+    }
+  ],
+  "tuned": [
+    {
+      "candidate": "go",
+      "cores": 1,
+      "chosen": 16,
+      "chosenRps": 17042,
+      "spreadPct": 5.7,
+      "tried": [
+        {
+          "workers": 8,
+          "bestRps": 16211,
+          "repetitions": 2
+        },
+        {
+          "workers": 16,
+          "bestRps": 17042,
+          "repetitions": 2
+        },
+        {
+          "workers": 32,
+          "bestRps": 16724,
+          "repetitions": 2
+        },
+        {
+          "workers": 64,
+          "bestRps": 16125,
+          "repetitions": 2
+        }
+      ]
+    },
+    {
+      "candidate": "go",
+      "cores": 2,
+      "chosen": 64,
+      "chosenRps": 29721,
+      "spreadPct": 69.2,
+      "tried": [
+        {
+          "workers": 8,
+          "bestRps": 17570,
+          "repetitions": 2
+        },
+        {
+          "workers": 16,
+          "bestRps": 25723,
+          "repetitions": 2
+        },
+        {
+          "workers": 32,
+          "bestRps": 27134,
+          "repetitions": 2
+        },
+        {
+          "workers": 64,
+          "bestRps": 29721,
+          "repetitions": 2
+        }
+      ]
+    },
+    {
+      "candidate": "go",
+      "cores": 4,
+      "chosen": 64,
+      "chosenRps": 55715,
+      "spreadPct": 70.6,
+      "tried": [
+        {
+          "workers": 8,
+          "bestRps": 32666,
+          "repetitions": 2
+        },
+        {
+          "workers": 16,
+          "bestRps": 41841,
+          "repetitions": 2
+        },
+        {
+          "workers": 32,
+          "bestRps": 52113,
+          "repetitions": 2
+        },
+        {
+          "workers": 64,
+          "bestRps": 55715,
+          "repetitions": 2
+        }
+      ]
+    },
+    {
+      "candidate": "fpm",
+      "cores": 1,
+      "chosen": 8,
+      "chosenRps": 6188,
+      "spreadPct": 30.7,
+      "tried": [
+        {
+          "workers": 8,
+          "bestRps": 6188,
+          "repetitions": 2
+        },
+        {
+          "workers": 16,
+          "bestRps": 5858,
+          "repetitions": 2
+        },
+        {
+          "workers": 32,
+          "bestRps": 5112,
+          "repetitions": 2
+        },
+        {
+          "workers": 64,
+          "bestRps": 4734,
+          "repetitions": 2
+        }
+      ]
+    },
+    {
+      "candidate": "fpm",
+      "cores": 2,
+      "chosen": 16,
+      "chosenRps": 11260,
+      "spreadPct": 20.7,
+      "tried": [
+        {
+          "workers": 8,
+          "bestRps": 10930,
+          "repetitions": 2
+        },
+        {
+          "workers": 16,
+          "bestRps": 11260,
+          "repetitions": 2
+        },
+        {
+          "workers": 32,
+          "bestRps": 10590,
+          "repetitions": 2
+        },
+        {
+          "workers": 64,
+          "bestRps": 9332,
+          "repetitions": 2
+        }
+      ]
+    },
+    {
+      "candidate": "fpm",
+      "cores": 4,
+      "chosen": 32,
+      "chosenRps": 20379,
+      "spreadPct": 24.7,
+      "tried": [
+        {
+          "workers": 8,
+          "bestRps": 16339,
+          "repetitions": 2
+        },
+        {
+          "workers": 16,
+          "bestRps": 20133,
+          "repetitions": 2
+        },
+        {
+          "workers": 32,
+          "bestRps": 20379,
+          "repetitions": 2
+        },
+        {
+          "workers": 64,
+          "bestRps": 17708,
+          "repetitions": 2
+        }
+      ]
+    },
+    {
+      "candidate": "frankenphp",
+      "cores": 1,
+      "chosen": 8,
+      "chosenRps": 6071,
+      "spreadPct": 6.5,
+      "tried": [
+        {
+          "workers": 8,
+          "bestRps": 6071,
+          "repetitions": 2
+        },
+        {
+          "workers": 16,
+          "bestRps": 5928,
+          "repetitions": 2
+        },
+        {
+          "workers": 32,
+          "bestRps": 5698,
+          "repetitions": 2
+        },
+        {
+          "workers": 64,
+          "bestRps": 5853,
+          "repetitions": 2
+        }
+      ]
+    },
+    {
+      "candidate": "frankenphp",
+      "cores": 2,
+      "chosen": 8,
+      "chosenRps": 14580,
+      "spreadPct": 29.6,
+      "tried": [
+        {
+          "workers": 8,
+          "bestRps": 14580,
+          "repetitions": 2
+        },
+        {
+          "workers": 16,
+          "bestRps": 12893,
+          "repetitions": 2
+        },
+        {
+          "workers": 32,
+          "bestRps": 11252,
+          "repetitions": 2
+        },
+        {
+          "workers": 64,
+          "bestRps": 11412,
+          "repetitions": 2
+        }
+      ]
+    },
+    {
+      "candidate": "frankenphp",
+      "cores": 4,
+      "chosen": 8,
+      "chosenRps": 25556,
+      "spreadPct": 29,
+      "tried": [
+        {
+          "workers": 8,
+          "bestRps": 25556,
+          "repetitions": 2
+        },
+        {
+          "workers": 16,
+          "bestRps": 23683,
+          "repetitions": 2
+        },
+        {
+          "workers": 32,
+          "bestRps": 20125,
+          "repetitions": 2
+        },
+        {
+          "workers": 64,
+          "bestRps": 19817,
+          "repetitions": 2
+        }
+      ]
+    }
+  ],
+  "floor": [
+    {
+      "cores": 1,
+      "kind": "rate",
+      "totalRps": 59991,
+      "repetitions": 3,
+      "p99Ms": 73.22
+    },
+    {
+      "cores": 1,
+      "kind": "flat",
+      "totalRps": 173035,
+      "repetitions": 3,
+      "p99Ms": 12.38
+    },
+    {
+      "cores": 2,
+      "kind": "rate",
+      "totalRps": 59991,
+      "repetitions": 3,
+      "p99Ms": 23.97
+    },
+    {
+      "cores": 2,
+      "kind": "flat",
+      "totalRps": 317085,
+      "repetitions": 3,
+      "p99Ms": 6.25
+    },
+    {
+      "cores": 4,
+      "kind": "rate",
+      "totalRps": 59993,
+      "repetitions": 3,
+      "p99Ms": 22.19
+    },
+    {
+      "cores": 4,
+      "kind": "flat",
+      "totalRps": 669726,
+      "repetitions": 3,
+      "p99Ms": 3.09
+    }
+  ],
+  "dbCeiling": [
+    {
+      "clients": 16,
+      "repetitions": 3,
+      "tps": 44787,
+      "tpsMedian": 43758,
+      "dbCores": 2.6
+    },
+    {
+      "clients": 32,
+      "repetitions": 3,
+      "tps": 57426,
+      "tpsMedian": 44202,
+      "dbCores": 3.15
+    },
+    {
+      "clients": 64,
+      "repetitions": 3,
+      "tps": 68212,
+      "tpsMedian": 64889,
+      "dbCores": 3.45
+    },
+    {
+      "clients": 96,
+      "repetitions": 3,
+      "tps": 67028,
+      "tpsMedian": 66521,
+      "dbCores": 3.52
+    }
+  ],
+  "dbCeilingBest": {
+    "clients": 64,
+    "repetitions": 3,
+    "tps": 68212,
+    "tpsMedian": 64889,
+    "dbCores": 3.45
+  },
+  "soak": [
+    {
+      "candidate": "go",
+      "targetRate": 17000,
+      "windows": 20,
+      "windowSeconds": 60,
+      "held": 14,
+      "of": 19,
+      "firstWindowPassed": true,
+      "achievedMedian": 16999.75,
+      "readP99First": 1.019,
+      "readP99Last": 1.182,
+      "writeP99First": 1.331,
+      "writeP99Last": 1.474,
+      "readP99Max": 1240.587,
+      "writeP99Max": 2532.363,
+      "cpuUsPerReqFirst": 81.93,
+      "cpuUsPerReqLast": 79.2,
+      "dbCpuUsPerReqFirst": 42.92,
+      "dbCpuUsPerReqLast": 39.32,
+      "rssPeakMiB": 39.2,
+      "rowsAdded": 10166179,
+      "tableStartBytes": 184508416,
+      "tableEndBytes": 1845739520,
+      "bytesPerRow": 163.4,
+      "series": [
+        {
+          "window": 1,
+          "achieved": 16999.77,
+          "readP99Ms": 1.044,
+          "writeP99Ms": 1.319,
+          "cpuUsPerReq": 82.69,
+          "dbCpuUsPerReq": 44.36,
+          "rows": 1509997,
+          "totalBytes": 266985472,
+          "pass": true
+        },
+        {
+          "window": 2,
+          "achieved": 16999.95,
+          "readP99Ms": 1.019,
+          "writeP99Ms": 1.331,
+          "cpuUsPerReq": 81.93,
+          "dbCpuUsPerReq": 42.92,
+          "rows": 2019994,
+          "totalBytes": 347594752,
+          "pass": true
+        },
+        {
+          "window": 3,
+          "achieved": 16999.63,
+          "readP99Ms": 1.144,
+          "writeP99Ms": 1.656,
+          "cpuUsPerReq": 80.44,
+          "dbCpuUsPerReq": 39.78,
+          "rows": 2529983,
+          "totalBytes": 431120384,
+          "pass": true
+        },
+        {
+          "window": 4,
+          "achieved": 16999.68,
+          "readP99Ms": 0.962,
+          "writeP99Ms": 1.237,
+          "cpuUsPerReq": 81.17,
+          "dbCpuUsPerReq": 39.24,
+          "rows": 3039973,
+          "totalBytes": 514842624,
+          "pass": true
+        },
+        {
+          "window": 5,
+          "achieved": 16999.7,
+          "readP99Ms": 1.146,
+          "writeP99Ms": 1.613,
+          "cpuUsPerReq": 80.09,
+          "dbCpuUsPerReq": 39.06,
+          "rows": 3549964,
+          "totalBytes": 597999616,
+          "pass": true
+        },
+        {
+          "window": 6,
+          "achieved": 16999.7,
+          "readP99Ms": 0.956,
+          "writeP99Ms": 1.319,
+          "cpuUsPerReq": 79.27,
+          "dbCpuUsPerReq": 38.89,
+          "rows": 4059957,
+          "totalBytes": 681713664,
+          "pass": true
+        },
+        {
+          "window": 7,
+          "achieved": 16999.92,
+          "readP99Ms": 0.933,
+          "writeP99Ms": 1.188,
+          "cpuUsPerReq": 79.91,
+          "dbCpuUsPerReq": 39.46,
+          "rows": 4569955,
+          "totalBytes": 765091840,
+          "pass": true
+        },
+        {
+          "window": 8,
+          "achieved": 16999.82,
+          "readP99Ms": 15.88,
+          "writeP99Ms": 32.044,
+          "cpuUsPerReq": 81.53,
+          "dbCpuUsPerReq": 41.74,
+          "rows": 5079954,
+          "totalBytes": 848838656,
+          "pass": false
+        },
+        {
+          "window": 9,
+          "achieved": 16999.75,
+          "readP99Ms": 1.85,
+          "writeP99Ms": 3.689,
+          "cpuUsPerReq": 81.25,
+          "dbCpuUsPerReq": 43.99,
+          "rows": 5589947,
+          "totalBytes": 932323328,
+          "pass": true
+        },
+        {
+          "window": 10,
+          "achieved": 16999.65,
+          "readP99Ms": 0.883,
+          "writeP99Ms": 1.329,
+          "cpuUsPerReq": 80.17,
+          "dbCpuUsPerReq": 40.62,
+          "rows": 6099932,
+          "totalBytes": 1015717888,
+          "pass": true
+        },
+        {
+          "window": 11,
+          "achieved": 16925.52,
+          "readP99Ms": 60.186,
+          "writeP99Ms": 272.183,
+          "cpuUsPerReq": 84.92,
+          "dbCpuUsPerReq": 48.03,
+          "rows": 6606584,
+          "totalBytes": 1098792960,
+          "pass": false
+        },
+        {
+          "window": 12,
+          "achieved": 16717.22,
+          "readP99Ms": 856.363,
+          "writeP99Ms": 2104.824,
+          "cpuUsPerReq": 92.48,
+          "dbCpuUsPerReq": 55.96,
+          "rows": 7103332,
+          "totalBytes": 1180311552,
+          "pass": false
+        },
+        {
+          "window": 13,
+          "achieved": 16560.5,
+          "readP99Ms": 985.728,
+          "writeP99Ms": 1761.557,
+          "cpuUsPerReq": 89.58,
+          "dbCpuUsPerReq": 52.68,
+          "rows": 7596218,
+          "totalBytes": 1260584960,
+          "pass": false
+        },
+        {
+          "window": 14,
+          "achieved": 16999.88,
+          "readP99Ms": 1240.587,
+          "writeP99Ms": 2532.363,
+          "cpuUsPerReq": 83.75,
+          "dbCpuUsPerReq": 44.13,
+          "rows": 8106216,
+          "totalBytes": 1344323584,
+          "pass": false
+        },
+        {
+          "window": 15,
+          "achieved": 16999.53,
+          "readP99Ms": 0.989,
+          "writeP99Ms": 1.28,
+          "cpuUsPerReq": 78.8,
+          "dbCpuUsPerReq": 39.25,
+          "rows": 8616200,
+          "totalBytes": 1428045824,
+          "pass": true
+        },
+        {
+          "window": 16,
+          "achieved": 16999.82,
+          "readP99Ms": 0.933,
+          "writeP99Ms": 1.169,
+          "cpuUsPerReq": 79.96,
+          "dbCpuUsPerReq": 38.84,
+          "rows": 9126198,
+          "totalBytes": 1511178240,
+          "pass": true
+        },
+        {
+          "window": 17,
+          "achieved": 16999.93,
+          "readP99Ms": 0.999,
+          "writeP99Ms": 1.35,
+          "cpuUsPerReq": 80.26,
+          "dbCpuUsPerReq": 39.09,
+          "rows": 9636198,
+          "totalBytes": 1594916864,
+          "pass": true
+        },
+        {
+          "window": 18,
+          "achieved": 16999.78,
+          "readP99Ms": 1.047,
+          "writeP99Ms": 1.418,
+          "cpuUsPerReq": 78.34,
+          "dbCpuUsPerReq": 38.86,
+          "rows": 10146191,
+          "totalBytes": 1678491648,
+          "pass": true
+        },
+        {
+          "window": 19,
+          "achieved": 16999.8,
+          "readP99Ms": 1.177,
+          "writeP99Ms": 1.499,
+          "cpuUsPerReq": 78.68,
+          "dbCpuUsPerReq": 38.9,
+          "rows": 10656181,
+          "totalBytes": 1761943552,
+          "pass": true
+        },
+        {
+          "window": 20,
+          "achieved": 16999.8,
+          "readP99Ms": 1.182,
+          "writeP99Ms": 1.474,
+          "cpuUsPerReq": 79.2,
+          "dbCpuUsPerReq": 39.32,
+          "rows": 11166179,
+          "totalBytes": 1845739520,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "candidate": "fpm",
+      "targetRate": 7250,
+      "windows": 20,
+      "windowSeconds": 60,
+      "held": 16,
+      "of": 19,
+      "firstWindowPassed": true,
+      "achievedMedian": 7249.9,
+      "readP99First": 1.5,
+      "readP99Last": 1.357,
+      "writeP99First": 1.985,
+      "writeP99Last": 2.045,
+      "readP99Max": 375.586,
+      "writeP99Max": 594.064,
+      "cpuUsPerReqFirst": 211.02,
+      "cpuUsPerReqLast": 226.49,
+      "dbCpuUsPerReqFirst": 72.65,
+      "dbCpuUsPerReqLast": 79.9,
+      "rssPeakMiB": 61.7,
+      "rowsAdded": 4347999,
+      "tableStartBytes": 182509568,
+      "tableEndBytes": 892428288,
+      "bytesPerRow": 163.3,
+      "series": [
+        {
+          "window": 1,
+          "achieved": 7249.97,
+          "readP99Ms": 2.455,
+          "writeP99Ms": 3.021,
+          "cpuUsPerReq": 214.29,
+          "dbCpuUsPerReq": 74.05,
+          "rows": 1217498,
+          "totalBytes": 217923584,
+          "pass": true
+        },
+        {
+          "window": 2,
+          "achieved": 7249.87,
+          "readP99Ms": 1.5,
+          "writeP99Ms": 1.985,
+          "cpuUsPerReq": 211.02,
+          "dbCpuUsPerReq": 72.65,
+          "rows": 1434994,
+          "totalBytes": 251789312,
+          "pass": true
+        },
+        {
+          "window": 3,
+          "achieved": 7249.93,
+          "readP99Ms": 2.173,
+          "writeP99Ms": 2.867,
+          "cpuUsPerReq": 213.8,
+          "dbCpuUsPerReq": 73.76,
+          "rows": 1652492,
+          "totalBytes": 287145984,
+          "pass": true
+        },
+        {
+          "window": 4,
+          "achieved": 7249.9,
+          "readP99Ms": 0.914,
+          "writeP99Ms": 1.045,
+          "cpuUsPerReq": 205.35,
+          "dbCpuUsPerReq": 69.67,
+          "rows": 1869991,
+          "totalBytes": 322887680,
+          "pass": true
+        },
+        {
+          "window": 5,
+          "achieved": 7249.93,
+          "readP99Ms": 1.089,
+          "writeP99Ms": 1.304,
+          "cpuUsPerReq": 210.7,
+          "dbCpuUsPerReq": 72.39,
+          "rows": 2087489,
+          "totalBytes": 358555648,
+          "pass": true
+        },
+        {
+          "window": 6,
+          "achieved": 7249.88,
+          "readP99Ms": 53.83,
+          "writeP99Ms": 60.098,
+          "cpuUsPerReq": 221.8,
+          "dbCpuUsPerReq": 77.51,
+          "rows": 2304985,
+          "totalBytes": 394149888,
+          "pass": false
+        },
+        {
+          "window": 7,
+          "achieved": 7249.93,
+          "readP99Ms": 1.258,
+          "writeP99Ms": 1.842,
+          "cpuUsPerReq": 229.69,
+          "dbCpuUsPerReq": 80.87,
+          "rows": 2522482,
+          "totalBytes": 429629440,
+          "pass": true
+        },
+        {
+          "window": 8,
+          "achieved": 7249.85,
+          "readP99Ms": 1.245,
+          "writeP99Ms": 1.51,
+          "cpuUsPerReq": 229.84,
+          "dbCpuUsPerReq": 80.22,
+          "rows": 2739976,
+          "totalBytes": 465264640,
+          "pass": true
+        },
+        {
+          "window": 9,
+          "achieved": 7249.9,
+          "readP99Ms": 1.034,
+          "writeP99Ms": 1.332,
+          "cpuUsPerReq": 231.77,
+          "dbCpuUsPerReq": 82.21,
+          "rows": 2957473,
+          "totalBytes": 501014528,
+          "pass": true
+        },
+        {
+          "window": 10,
+          "achieved": 7249.93,
+          "readP99Ms": 1.017,
+          "writeP99Ms": 1.28,
+          "cpuUsPerReq": 229.95,
+          "dbCpuUsPerReq": 80.06,
+          "rows": 3174972,
+          "totalBytes": 536494080,
+          "pass": true
+        },
+        {
+          "window": 11,
+          "achieved": 7249.88,
+          "readP99Ms": 1.127,
+          "writeP99Ms": 1.566,
+          "cpuUsPerReq": 237.62,
+          "dbCpuUsPerReq": 85.45,
+          "rows": 3392470,
+          "totalBytes": 572219392,
+          "pass": true
+        },
+        {
+          "window": 12,
+          "achieved": 7249.95,
+          "readP99Ms": 0.979,
+          "writeP99Ms": 1.239,
+          "cpuUsPerReq": 217.98,
+          "dbCpuUsPerReq": 74.89,
+          "rows": 3609967,
+          "totalBytes": 607813632,
+          "pass": true
+        },
+        {
+          "window": 13,
+          "achieved": 7249.93,
+          "readP99Ms": 0.884,
+          "writeP99Ms": 1.125,
+          "cpuUsPerReq": 215.75,
+          "dbCpuUsPerReq": 73.95,
+          "rows": 3827466,
+          "totalBytes": 643547136,
+          "pass": true
+        },
+        {
+          "window": 14,
+          "achieved": 7249.88,
+          "readP99Ms": 0.874,
+          "writeP99Ms": 1.072,
+          "cpuUsPerReq": 217.65,
+          "dbCpuUsPerReq": 74.3,
+          "rows": 4044961,
+          "totalBytes": 679034880,
+          "pass": true
+        },
+        {
+          "window": 15,
+          "achieved": 7249.95,
+          "readP99Ms": 1.219,
+          "writeP99Ms": 1.832,
+          "cpuUsPerReq": 230.65,
+          "dbCpuUsPerReq": 82.06,
+          "rows": 4262458,
+          "totalBytes": 714784768,
+          "pass": true
+        },
+        {
+          "window": 16,
+          "achieved": 7196.05,
+          "readP99Ms": 346.272,
+          "writeP99Ms": 449.082,
+          "cpuUsPerReq": 294.87,
+          "dbCpuUsPerReq": 111.55,
+          "rows": 4478014,
+          "totalBytes": 750190592,
+          "pass": false
+        },
+        {
+          "window": 17,
+          "achieved": 7249.8,
+          "readP99Ms": 375.586,
+          "writeP99Ms": 594.064,
+          "cpuUsPerReq": 232.87,
+          "dbCpuUsPerReq": 81.84,
+          "rows": 4695506,
+          "totalBytes": 785809408,
+          "pass": false
+        },
+        {
+          "window": 18,
+          "achieved": 7249.98,
+          "readP99Ms": 1.553,
+          "writeP99Ms": 2.642,
+          "cpuUsPerReq": 224.89,
+          "dbCpuUsPerReq": 79.05,
+          "rows": 4913005,
+          "totalBytes": 821141504,
+          "pass": true
+        },
+        {
+          "window": 19,
+          "achieved": 7249.97,
+          "readP99Ms": 1.552,
+          "writeP99Ms": 2.651,
+          "cpuUsPerReq": 224.36,
+          "dbCpuUsPerReq": 79.28,
+          "rows": 5130504,
+          "totalBytes": 856834048,
+          "pass": true
+        },
+        {
+          "window": 20,
+          "achieved": 7249.85,
+          "readP99Ms": 1.357,
+          "writeP99Ms": 2.045,
+          "cpuUsPerReq": 226.49,
+          "dbCpuUsPerReq": 79.9,
+          "rows": 5347999,
+          "totalBytes": 892428288,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "candidate": "frankenphp",
+      "targetRate": 4750,
+      "windows": 20,
+      "windowSeconds": 60,
+      "held": 4,
+      "of": 19,
+      "firstWindowPassed": true,
+      "achievedMedian": 4749.93,
+      "readP99First": 1.844,
+      "readP99Last": 2723.992,
+      "writeP99First": 2.609,
+      "writeP99Last": 2889.435,
+      "readP99Max": 8357.775,
+      "writeP99Max": 8804.413,
+      "cpuUsPerReqFirst": 182.06,
+      "cpuUsPerReqLast": 208.78,
+      "dbCpuUsPerReqFirst": 57.81,
+      "dbCpuUsPerReqLast": 83.94,
+      "rssPeakMiB": 69.2,
+      "rowsAdded": 2835442,
+      "tableStartBytes": 182648832,
+      "tableEndBytes": 644497408,
+      "bytesPerRow": 162.9,
+      "series": [
+        {
+          "window": 1,
+          "achieved": 4749.87,
+          "readP99Ms": 2.445,
+          "writeP99Ms": 3.376,
+          "cpuUsPerReq": 183.05,
+          "dbCpuUsPerReq": 57.57,
+          "rows": 1142496,
+          "totalBytes": 206028800,
+          "pass": true
+        },
+        {
+          "window": 2,
+          "achieved": 4749.97,
+          "readP99Ms": 1.844,
+          "writeP99Ms": 2.609,
+          "cpuUsPerReq": 182.06,
+          "dbCpuUsPerReq": 57.81,
+          "rows": 1284994,
+          "totalBytes": 228532224,
+          "pass": true
+        },
+        {
+          "window": 3,
+          "achieved": 4749.92,
+          "readP99Ms": 2.248,
+          "writeP99Ms": 3.068,
+          "cpuUsPerReq": 185.41,
+          "dbCpuUsPerReq": 59.87,
+          "rows": 1427491,
+          "totalBytes": 250208256,
+          "pass": true
+        },
+        {
+          "window": 4,
+          "achieved": 4749.93,
+          "readP99Ms": 1398.79,
+          "writeP99Ms": 1585.64,
+          "cpuUsPerReq": 198.4,
+          "dbCpuUsPerReq": 69.32,
+          "rows": 1569989,
+          "totalBytes": 273571840,
+          "pass": false
+        },
+        {
+          "window": 5,
+          "achieved": 4749.9,
+          "readP99Ms": 2.598,
+          "writeP99Ms": 3.691,
+          "cpuUsPerReq": 190.1,
+          "dbCpuUsPerReq": 61.69,
+          "rows": 1712484,
+          "totalBytes": 296869888,
+          "pass": true
+        },
+        {
+          "window": 6,
+          "achieved": 4665.7,
+          "readP99Ms": 1125.578,
+          "writeP99Ms": 1343.491,
+          "cpuUsPerReq": 193.05,
+          "dbCpuUsPerReq": 66.11,
+          "rows": 1852285,
+          "totalBytes": 319758336,
+          "pass": false
+        },
+        {
+          "window": 7,
+          "achieved": 4749.95,
+          "readP99Ms": 8357.775,
+          "writeP99Ms": 8804.413,
+          "cpuUsPerReq": 205.12,
+          "dbCpuUsPerReq": 81.6,
+          "rows": 1994783,
+          "totalBytes": 343113728,
+          "pass": false
+        },
+        {
+          "window": 8,
+          "achieved": 4642.63,
+          "readP99Ms": 3750.482,
+          "writeP99Ms": 3887.988,
+          "cpuUsPerReq": 201.4,
+          "dbCpuUsPerReq": 72.67,
+          "rows": 2133695,
+          "totalBytes": 365821952,
+          "pass": false
+        },
+        {
+          "window": 9,
+          "achieved": 4700.53,
+          "readP99Ms": 254.064,
+          "writeP99Ms": 254.525,
+          "cpuUsPerReq": 195.68,
+          "dbCpuUsPerReq": 67.7,
+          "rows": 2274675,
+          "totalBytes": 388923392,
+          "pass": false
+        },
+        {
+          "window": 10,
+          "achieved": 4749.93,
+          "readP99Ms": 2267.122,
+          "writeP99Ms": 2374.039,
+          "cpuUsPerReq": 192.89,
+          "dbCpuUsPerReq": 70.38,
+          "rows": 2417173,
+          "totalBytes": 412246016,
+          "pass": false
+        },
+        {
+          "window": 11,
+          "achieved": 4749.92,
+          "readP99Ms": 2986.944,
+          "writeP99Ms": 3360.913,
+          "cpuUsPerReq": 192.23,
+          "dbCpuUsPerReq": 70.52,
+          "rows": 2559671,
+          "totalBytes": 435609600,
+          "pass": false
+        },
+        {
+          "window": 12,
+          "achieved": 4719.6,
+          "readP99Ms": 253.275,
+          "writeP99Ms": 273.287,
+          "cpuUsPerReq": 180.04,
+          "dbCpuUsPerReq": 56.95,
+          "rows": 2701206,
+          "totalBytes": 458727424,
+          "pass": false
+        },
+        {
+          "window": 13,
+          "achieved": 4749.95,
+          "readP99Ms": 1797.59,
+          "writeP99Ms": 1972.063,
+          "cpuUsPerReq": 187.81,
+          "dbCpuUsPerReq": 64.86,
+          "rows": 2843704,
+          "totalBytes": 482091008,
+          "pass": false
+        },
+        {
+          "window": 14,
+          "achieved": 4749.95,
+          "readP99Ms": 2.14,
+          "writeP99Ms": 2.79,
+          "cpuUsPerReq": 180.26,
+          "dbCpuUsPerReq": 55.39,
+          "rows": 2986201,
+          "totalBytes": 505446400,
+          "pass": true
+        },
+        {
+          "window": 15,
+          "achieved": 4668.53,
+          "readP99Ms": 1777.82,
+          "writeP99Ms": 1958.093,
+          "cpuUsPerReq": 192.65,
+          "dbCpuUsPerReq": 64.52,
+          "rows": 3126132,
+          "totalBytes": 528359424,
+          "pass": false
+        },
+        {
+          "window": 16,
+          "achieved": 4648.72,
+          "readP99Ms": 2256.123,
+          "writeP99Ms": 2424.518,
+          "cpuUsPerReq": 190.18,
+          "dbCpuUsPerReq": 65.06,
+          "rows": 3265447,
+          "totalBytes": 551133184,
+          "pass": false
+        },
+        {
+          "window": 17,
+          "achieved": 4749.93,
+          "readP99Ms": 4100.448,
+          "writeP99Ms": 4475.69,
+          "cpuUsPerReq": 198.4,
+          "dbCpuUsPerReq": 71.36,
+          "rows": 3407945,
+          "totalBytes": 574496768,
+          "pass": false
+        },
+        {
+          "window": 18,
+          "achieved": 4749.95,
+          "readP99Ms": 2869.212,
+          "writeP99Ms": 3051.698,
+          "cpuUsPerReq": 190.95,
+          "dbCpuUsPerReq": 65.34,
+          "rows": 3550444,
+          "totalBytes": 597843968,
+          "pass": false
+        },
+        {
+          "window": 19,
+          "achieved": 4749.97,
+          "readP99Ms": 2711.303,
+          "writeP99Ms": 2905.248,
+          "cpuUsPerReq": 197.92,
+          "dbCpuUsPerReq": 71.21,
+          "rows": 3692943,
+          "totalBytes": 621158400,
+          "pass": false
+        },
+        {
+          "window": 20,
+          "achieved": 4749.97,
+          "readP99Ms": 2723.992,
+          "writeP99Ms": 2889.435,
+          "cpuUsPerReq": 208.78,
+          "dbCpuUsPerReq": 83.94,
+          "rows": 3835442,
+          "totalBytes": 644497408,
+          "pass": false
+        }
+      ]
+    }
+  ],
+  "integrity": {
+    "measuredPoints": 243,
+    "answers": 88850429,
+    "pointsWithFailedRequests": 0,
+    "seededRowsBeforeEveryLadderStep": {
+      "min": 1000000,
+      "max": 1000000
+    },
+    "samplerGaps": 0,
+    "events": []
+  }
+}

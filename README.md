@@ -21,7 +21,17 @@ resources?** The work is what an OAuth2 resource server does all day:
 | `read` | `GET /events/{id}` | verify, then one row by primary key from a 1,000,000-row table (random id) |
 | `write` | `POST /events` | verify, validate the JSON body, then one `INSERT … RETURNING id` |
 
-## Running it
+## Two runs, two questions
+
+| Harness | Asks | Output |
+|---|---|---|
+| `bench/run.sh` | On four cores, one scenario at a time, how fast is each runtime and what does a request cost it? | `results/<stamp>/` |
+| `bench/capacity.sh` | Under mixed read/write traffic, how many cores does each runtime need to carry a given rate? | `results/capacity-<stamp>/` |
+
+The first is a runtime comparison. The second is the question a capacity plan
+actually asks, and it is the one the published report of 2026-09-17 answers.
+
+## The scenario run
 
 ```sh
 ./bench/build.sh                              # images + key pair + tokens
@@ -37,7 +47,7 @@ candidate.
 Keys and tokens are minted locally by `keys/gen-keys.mjs` and are not
 committed; the tokens live for seven days.
 
-## Protocol
+### Protocol
 
 **Budget.** The Docker VM has 12 vCPUs. They are split into three disjoint
 cpusets:
@@ -98,7 +108,7 @@ candidate and the database once a second (`cpu.stat usage_usec`,
 `memory.current`, `memory.stat anon`). CPU time is taken from the counter, so
 CPU-per-request is exact regardless of the sampling interval.
 
-## Reading the output
+### Reading the output
 
 `results/<stamp>/`:
 
@@ -124,9 +134,92 @@ Derived figures (`bench/report.mjs`):
 - Phase A figures are the **median** of the repetitions; phase B figures come
   from the **best** repetition.
 
-## Run of 2026-09-16
 
-`results/2026-09-16/` is the run the published report uses. It deviated from
+## The capacity run
+
+```sh
+./bench/build.sh && ./bench/verify.sh
+caffeinate -dimsu ./bench/capacity.sh --all      # about five hours
+node bench/capacity-report.mjs $(date -u +%F)
+```
+
+`./bench/capacity.sh --smoke` runs a few-minute version of every phase.
+Single phases: `--floor`, `--dbceiling`, `--tune`, `--ladder`, `--soak`.
+
+**The load is mixed.** Two open-loop generators hit the same candidate at the
+same instant — one `GET /events/{id}`, one `POST /events`, half the target rate
+each, each with its own access token out of `keys/tokens.json`. They meet at a
+rendezvous timestamp measured in the VM's clock, not the host's, so the two
+halves start within about ten milliseconds of each other. Real traffic is not
+one scenario at a time, and measuring them separately cannot show what reads
+and writes cost each other.
+
+**The core budget is an axis.** Each candidate is measured on 1, 2 and 4 cores.
+`GOMAXPROCS`, the php-fpm pool, the FrankenPHP worker count and the nginx
+worker count are start-up arguments, not image constants; left unset they
+reproduce the sizes the 2026-09-16 run used. Memory stays at 1 GiB at every
+budget, so the axis is cores and nothing else. As before, the php-fpm
+candidate's nginx lives inside the same cpuset.
+
+**Every candidate is tuned before it is measured.** Phase `tune` runs each
+candidate flat out at 8, 16, 32 and 64 workers at every core budget, twice, and
+keeps the best. That number is the pool size **and** the database connection
+ceiling, so it stays one knob for all three. The whole table is published: a
+result that rests on a pool size which happened to suit one candidate is not a
+result, and the table is how you check that it does not.
+
+**Capacity is a service level, not a saturation point.** A rate counts as
+carried when both halves of the mix arrive at 99% or more of their target,
+both stay under a p99 of 10 ms, and nothing fails. The search doubles from
+3,000/s until a rate fails, then bisects the bracket four times, 30 s per
+point, three repetitions. What is reported is the median repetition, with the
+spread beside it.
+
+**Every step starts where the last one did.** Between two points the rows the
+previous step wrote are deleted and the table is vacuumed and analysed
+(`db/reset.sql`); the relation sizes are recorded either side of every
+measurement, so the report can show the reset held. A fresh `CREATE DATABASE
+… TEMPLATE` copy and a fresh container open each cell.
+
+**Two reference measurements bound the result from outside.**
+
+| Phase | What it drives | Why |
+|---|---|---|
+| `floor` | an nginx that runs no application code, on the candidate's own cores | nothing that parses a token can beat it; it also shows the generator is not the limit |
+| `dbceiling` | pgbench, straight into PostgreSQL, no HTTP and no token | above this rate a comparison between the runtimes says nothing about the runtimes |
+
+`dbceiling` needs `-j` high enough that pgbench is not the thing it measures:
+at `-j 4` it reports about 22,000 inserts/s and at `-j 8` about 61,000, and
+only the second one is PostgreSQL's answer.
+
+**Phase `soak`** holds nine tenths of the measured four-core capacity for
+twenty one-minute windows with nothing reset in between, so the table grows the
+whole time. oha is restarted every window because it keeps every result in
+memory. The first window is dropped from the summary: it carries the cost of a
+pool that has just opened.
+
+### Reading the output
+
+`results/capacity-<stamp>/`:
+
+| File | Content |
+|---|---|
+| `meta.json` | host, versions, the configuration the run used |
+| `steps.jsonl` | one line per measured point: both halves, cgroup counters, table sizes, and whether it met the service level |
+| `tuning.jsonl` | every pool size tried, and the one chosen |
+| `events.jsonl` | anything that went wrong and what was done about it |
+| `raw/*.read.json`, `raw/*.write.json` | oha output, verbatim |
+| `raw/*.res.jsonl` | cgroup samples for the run of the same name |
+| `raw/dbceil_*.txt` | pgbench output, verbatim |
+| `summary.json`, `summary.csv` | derived by `bench/capacity-report.mjs` |
+| `run.log` | the orchestrator's own log |
+
+The figure that multiplies is `cpuUsPerReq`: target rate x CPU per request =
+cores. Everything else in a capacity plan is that number and arithmetic.
+
+## The scenario run of 2026-09-16
+
+`results/2026-09-16/` is the run of `bench/run.sh` that the first report uses. It deviated from
 the protocol above in three ways:
 
 - **One block re-measured.** The host slept during the ceiling block of

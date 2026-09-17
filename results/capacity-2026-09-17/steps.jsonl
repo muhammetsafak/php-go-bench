@@ -1,0 +1,12 @@
+{"phase":"dbceiling","clients":16,"jobs":8,"rep":1,"tps":29309.638613,"dbCpuUs":59982559,"dbCores":2}
+{"phase":"dbceiling","clients":32,"jobs":8,"rep":1,"tps":57426.260536,"dbCpuUs":94516190,"dbCores":3.15}
+{"phase":"dbceiling","clients":64,"jobs":8,"rep":1,"tps":64889.320244,"dbCpuUs":103422937,"dbCores":3.45}
+{"phase":"dbceiling","clients":96,"jobs":8,"rep":1,"tps":62130.994931,"dbCpuUs":105693164,"dbCores":3.52}
+{"phase":"dbceiling","clients":16,"jobs":8,"rep":2,"tps":43757.729707,"dbCpuUs":78630807,"dbCores":2.62}
+{"phase":"dbceiling","clients":32,"jobs":8,"rep":2,"tps":44202.162864,"dbCpuUs":81464892,"dbCores":2.72}
+{"phase":"dbceiling","clients":64,"jobs":8,"rep":2,"tps":63031.103420,"dbCpuUs":102466879,"dbCores":3.42}
+{"phase":"dbceiling","clients":96,"jobs":8,"rep":2,"tps":66520.582820,"dbCpuUs":105582222,"dbCores":3.52}
+{"phase":"dbceiling","clients":16,"jobs":8,"rep":3,"tps":44787.053990,"dbCpuUs":78147445,"dbCores":2.6}
+{"phase":"dbceiling","clients":32,"jobs":8,"rep":3,"tps":34481.079928,"dbCpuUs":67283672,"dbCores":2.24}
+{"phase":"dbceiling","clients":64,"jobs":8,"rep":3,"tps":68211.865720,"dbCpuUs":103560042,"dbCores":3.45}
+{"phase":"dbceiling","clients":96,"jobs":8,"rep":3,"tps":67028.283585,"dbCpuUs":105633223,"dbCores":3.52}

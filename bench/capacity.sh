@@ -58,6 +58,7 @@ L_CONNS=$(jq -r .ladder.connectionsPerGenerator $CAP)
 L_REPS="${L_REPS:-$(jq -r .ladder.repetitions $CAP)}"
 WARMUP="${WARMUP:-$(jq -r .ladder.warmupSeconds $CAP)}"
 COOL=$(jq -r .ladder.cooldownSeconds $CAP)
+SETTLE=$(jq -r '.ladder.settleSeconds // 6' $CAP)
 
 T_DUR="${T_DUR:-$(jq -r .tune.duration $CAP)}"
 T_CONNS=$(jq -r .tune.connectionsPerGenerator $CAP)
@@ -212,7 +213,7 @@ point() { # <stem> <phase> <cand> <cores> <workers> <rate> <dur> <conns> <rep>
   w=$(half "$RAW/$stem.write.json")
   rs=$(res "$RAW/$stem.res.jsonl")
   local rec
-  rec=$(jq -n --arg stem "$stem" --arg phase "$phase" --arg cand "$cand" \
+  rec=$(jq -n -c --arg stem "$stem" --arg phase "$phase" --arg cand "$cand" \
     --argjson cores "$cores" --argjson workers "$workers" --argjson rate "$rate" \
     --argjson dur "$d" --argjson conns "$conns" --argjson rep "$rep" \
     --argjson read "$r" --argjson write "$w" --argjson resrc "$rs" \
@@ -233,6 +234,9 @@ point() { # <stem> <phase> <cand> <cores> <workers> <rate> <dur> <conns> <rep>
      dbCpuUsPerReq: (if ($read.ok + $write.ok) > 0
                    then (($resrc.dbCpuUs / ($read.ok + $write.ok) * 100 | round) / 100) else null end),
      table: {before:$before, after:$after},
+     failedOn: ([ (if $read.bad + $write.bad > 0 then "failed-requests" else empty end),
+                  (if $ra < ($rt * $sloFrac) or $wa < ($wt * $sloFrac) then "rate" else empty end),
+                  (if $read.p99ms > $sloP99 or $write.p99ms > $sloP99 then "p99" else empty end) ]),
      pass: ($rate > 0
             and $read.bad == 0 and $write.bad == 0
             and $ra >= ($rt * $sloFrac) and $wa >= ($wt * $sloFrac)
@@ -245,7 +249,14 @@ point() { # <stem> <phase> <cand> <cores> <workers> <rate> <dur> <conns> <rep>
 
 # --------------------------------------------------------------- block setup
 
-reset_events() { psql_ -d bench < db/reset.sql >/dev/null 2>&1 || true; }
+# Put the table back, then let the database finish writing back the checkpoint
+# that doing so caused. Without the pause the write half of the next window can
+# stall behind that writeback, which looks exactly like a candidate that ran
+# out of capacity and is not one.
+reset_events() {
+  psql_ -d bench < db/reset.sql >/dev/null 2>&1 || true
+  sleep "$SETTLE"
+}
 
 # A template copy occasionally loses a race with a connection that has not gone
 # away yet. Three tries, then the cell is skipped and said so — an overnight run
@@ -317,7 +328,7 @@ phase_dbceiling() {
         -T "$(secs "$D_DUR")" -P 5 > "$out" 2>&1 || true
       af=$(docker exec pgb-db awk '$1=="usage_usec"{print $2}' /sys/fs/cgroup/cpu.stat 2>/dev/null || echo 0)
       tps=$(awk '/^tps = /{print $3; exit}' "$out")
-      jq -n --argjson clients "$cl" --argjson rep "$rep" --arg tps "${tps:-0}" \
+      jq -n -c --argjson clients "$cl" --argjson rep "$rep" --arg tps "${tps:-0}" \
         --argjson cpuUs "$(( af - b4 ))" --argjson dur "$(secs "$D_DUR")" --argjson jobs "$D_JOBS" \
         '{phase:"dbceiling", clients:$clients, jobs:$jobs, rep:$rep, tps:($tps|tonumber),
           dbCpuUs:$cpuUs, dbCores: (($cpuUs / 1000000 / $dur * 100 | round) / 100)}' >> "$OUT/steps.jsonl"
@@ -341,9 +352,9 @@ phase_tune() {
           mix "$stem" app 0 "$T_CONNS" "$T_DUR"
           r=$(half "$RAW/$stem.read.json")
           w=$(half "$RAW/$stem.write.json")
-          total=$(jq -n --argjson r "$r" --argjson w "$w" --argjson d "$(secs "$T_DUR")" \
+          total=$(jq -n -c --argjson r "$r" --argjson w "$w" --argjson d "$(secs "$T_DUR")" \
             'if ($r.bad + $w.bad) > 0 then 0 else (($r.ok + $w.ok) / $d | floor) end')
-          jq -n --arg cand "$cand" --argjson cores "$c" --argjson workers "$wk" \
+          jq -n -c --arg cand "$cand" --argjson cores "$c" --argjson workers "$wk" \
             --argjson rep "$trep" --argjson read "$r" --argjson write "$w" --argjson total "$total" \
             '{phase:"tune", candidate:$cand, cores:$cores, workers:$workers, rep:$rep,
               read:$read, write:$write, totalRps:$total}' >> "$OUT/tuning.jsonl"
@@ -354,7 +365,7 @@ phase_tune() {
         log2 "  tune $cand cores=$c workers=$wk best=$sum/s"
         if [ "$sum" -gt "$best" ]; then best=$sum; bestn=$wk; fi
       done
-      jq -n --arg cand "$cand" --argjson cores "$c" --argjson workers "$bestn" --argjson rps "$best" \
+      jq -n -c --arg cand "$cand" --argjson cores "$c" --argjson workers "$bestn" --argjson rps "$best" \
         '{chosen:true, candidate:$cand, cores:$cores, workers:$workers, totalRps:$rps}' >> "$OUT/tuning.jsonl"
       log2 "  -> $cand cores=$c uses $bestn workers"
     done
@@ -368,6 +379,25 @@ chosen_workers() { # <cand> <cores>
 }
 
 round_to() { echo $(( ( ($1 + $2 / 2) / $2 ) * $2 )); }
+
+# A rate is only declared out of reach when two windows at that rate say so.
+# A single window can be spoiled by something that has nothing to do with the
+# candidate — a checkpoint writeback, the host scheduler moving the VM's vCPUs
+# — and in an exponential search a false negative is not recoverable: it turns
+# the search around and the cell reports a fraction of its real capacity. The
+# first attempt of this run did exactly that, twice; see EXCLUDED.md.
+attempt() { # <stem-base> <cand> <cores> <workers> <rate> <rep> -> pass|fail
+  local v
+  reset_events
+  v=$(point "$1" ladder "$2" "$3" "$4" "$5" "$L_DUR" "$L_CONNS" "$6")
+  sleep "$COOL"
+  if [ "$v" = pass ]; then echo pass; return; fi
+  log2 "    retrying $5/s once before believing it"
+  reset_events
+  v=$(point "${1}_t2" ladder "$2" "$3" "$4" "$5" "$L_DUR" "$L_CONNS" "$6")
+  sleep "$COOL"
+  echo "$v"
+}
 
 # Exponential search for the bracket, then bisection inside it. Every point is
 # a full 30 s open-loop run against a table that was put back to its seeded
@@ -383,9 +413,7 @@ phase_ladder() {
         open_cell "$cand" "$c" "$wk" || continue
         lo=0; hi=0; rate=$L_START
         while :; do
-          reset_events
-          v=$(point "lad_${cand}_c${c}_r${rep}_q${rate}" ladder "$cand" "$c" "$wk" "$rate" "$L_DUR" "$L_CONNS" "$rep")
-          sleep "$COOL"
+          v=$(attempt "lad_${cand}_c${c}_r${rep}_q${rate}" "$cand" "$c" "$wk" "$rate" "$rep")
           if [ "$v" = pass ]; then
             lo=$rate
             [ "$rate" -ge "$L_MAX" ] && break
@@ -399,13 +427,11 @@ phase_ladder() {
           for i in $(seq 1 "$L_REFINE"); do
             mid=$(round_to $(( (lo + hi) / 2 )) "$L_GRAIN")
             if [ "$mid" -le "$lo" ] || [ "$mid" -ge "$hi" ]; then break; fi
-            reset_events
-            v=$(point "lad_${cand}_c${c}_r${rep}_q${mid}" ladder "$cand" "$c" "$wk" "$mid" "$L_DUR" "$L_CONNS" "$rep")
-            sleep "$COOL"
+            v=$(attempt "lad_${cand}_c${c}_r${rep}_q${mid}" "$cand" "$c" "$wk" "$mid" "$rep")
             if [ "$v" = pass ]; then lo=$mid; else hi=$mid; fi
           done
         fi
-        jq -n --arg cand "$cand" --argjson cores "$c" --argjson workers "$wk" \
+        jq -n -c --arg cand "$cand" --argjson cores "$c" --argjson workers "$wk" \
           --argjson rep "$rep" --argjson cap "$lo" --argjson firstFail "$hi" \
           '{phase:"capacity", candidate:$cand, cores:$cores, workers:$workers, rep:$rep,
             capacity:$cap, firstFailingRate:$firstFail}' >> "$OUT/steps.jsonl"
@@ -444,7 +470,7 @@ phase_soak() {
 }
 
 write_meta() {
-  jq -n \
+  jq -n -c \
     --arg stamp "$STAMP" --arg mode "$MODE" --arg started "$(date -u +%FT%TZ)" \
     --arg cpu "$(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo unknown)" \
     --arg hostCores "$(sysctl -n hw.ncpu 2>/dev/null || echo unknown)" \
