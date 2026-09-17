@@ -1,0 +1,29 @@
+# Template. frankenphp-entrypoint.sh substitutes __WORKERS__ (default 32) and
+# __THREADS__ (__WORKERS__ + 1).
+#
+# The worker count is the number of PHP processes and therefore the number of
+# database connections, the same knob as the php-fpm pool size and the Go pool
+# size. FrankenPHP requires the thread pool to be strictly larger than the
+# worker count; the one extra thread would serve non-worker scripts, and every
+# request here goes to the worker.
+{
+	auto_https off
+	admin off
+	frankenphp {
+		num_threads __THREADS__
+		worker {
+			file /app/public/worker.php
+			num __WORKERS__
+		}
+	}
+}
+
+:80 {
+	# Every request goes to the worker; no filesystem lookup on the way,
+	# matching the php-fpm nginx config.
+	route {
+		rewrite * /worker.php
+		root * /app/public
+		php
+	}
+}

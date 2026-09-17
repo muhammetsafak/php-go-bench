@@ -7,10 +7,16 @@
  * RS256 access tokens once, and the candidates receive the public half through
  * a read-only mount. Every candidate verifies the same bytes.
  *
- *   valid    both scopes, 7 days to live — the token every measurement sends
+ *   valid    both scopes, 7 days to live
+ *   pool     eight more tokens with both scopes, distinct jti/iat, so every
+ *            load generator sends a different token and no candidate can be
+ *            accidentally helped by the same bytes arriving over and over
  *   readonly events:read only — POST /events must refuse it
  *   expired  exp in the past
  *   foreign  well-formed, signed by a key the services have never seen
+ *
+ * Every pool token carries the same sub, because the read query filters by
+ * subject and the seeded rows belong to one client.
  *
  * Output: private.pem, public.pem, public.php (the PEM as an opcache-able PHP
  * file, so php-fpm does not touch the filesystem per request), tokens.json.
@@ -56,8 +62,12 @@ const base = {
 const { publicKey, privateKey } = pair();
 const foreign = pair();
 
+const POOL_SIZE = 8;
+
 const tokens = {
   valid: sign(privateKey, base),
+  pool: Array.from({ length: POOL_SIZE }, (_, i) =>
+    sign(privateKey, { ...base, jti: `bench-${i + 1}`, iat: now - i })),
   readonly: sign(privateKey, { ...base, scope: 'events:read' }),
   expired: sign(privateKey, { ...base, iat: now - 7200, nbf: now - 7200, exp: now - 3600 }),
   foreign: sign(foreign.privateKey, base),
@@ -67,4 +77,4 @@ writeFileSync(join(dir, 'private.pem'), privateKey, { mode: 0o600 });
 writeFileSync(join(dir, 'public.pem'), publicKey);
 writeFileSync(join(dir, 'public.php'), `<?php return ${JSON.stringify(publicKey)};\n`);
 writeFileSync(join(dir, 'tokens.json'), JSON.stringify({ issuer: ISSUER, audience: AUDIENCE, expiresAt: base.exp, ...tokens }, null, 2) + '\n');
-console.log(`keys and tokens written to ${dir} (valid until ${new Date(base.exp * 1000).toISOString()})`);
+console.log(`keys and ${POOL_SIZE + 3} tokens written to ${dir} (valid until ${new Date(base.exp * 1000).toISOString()})`);

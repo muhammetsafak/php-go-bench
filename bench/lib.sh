@@ -74,6 +74,31 @@ start_app() {
     "pgb/$cand" >/dev/null
 }
 
+# The candidate on a chosen core budget and a chosen pool size. The pool size
+# is one number for all three: Go's pgx pool, php-fpm's children (one
+# persistent PDO each) and FrankenPHP's workers (one PDO each) — so the
+# database connection ceiling is the same whatever the candidate is. nginx, for
+# the php-fpm candidate only, lives inside the same cpuset.
+#
+#   start_app_sized <candidate> <cores> <workers>
+start_app_sized() {
+  local cand="$1" cores="$2" workers="$3" cpus nginx
+  case "$cores" in
+    1) cpus=0 ;; 2) cpus=0-1 ;; 3) cpus=0-2 ;; 4) cpus=0-3 ;;
+    *) log "FATAL: no cpuset defined for $cores cores"; return 2 ;;
+  esac
+  [ "$cores" -ge 4 ] && nginx=2 || nginx=1
+  stop_app
+  docker run -d --name pgb-app --network "$NET" --network-alias app \
+    --cpuset-cpus "$cpus" --memory "$MEM_APP" --memory-swap "$MEM_APP" \
+    --ulimit nofile=65536:65536 \
+    -v "$ROOT/keys:/keys:ro" \
+    -e GOMAXPROCS="$cores" -e WORKERS="$workers" -e NGINX_WORKERS="$nginx" \
+    -e DB_HOST=db -e DB_NAME=bench -e DB_USER=postgres -e DB_PASS=bench \
+    -e DB_MAX_CONNS="$workers" \
+    "pgb/$cand" >/dev/null
+}
+
 # Waits until the candidate answers /auth with 200.
 wait_app() {
   local tok; tok="$(token valid)"

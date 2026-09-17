@@ -14,5 +14,8 @@ COPY docker/fpm-pool.conf /usr/local/etc/php-fpm.d/www.conf
 COPY docker/fpm-nginx.conf /etc/nginx/nginx.conf
 COPY --from=vendor /app /app
 COPY apps/php/public /app/public
+COPY docker/fpm-entrypoint.sh /usr/local/bin/entrypoint
 EXPOSE 80
-CMD ["sh", "-c", "php-fpm --daemonize && exec nginx -g 'daemon off;'"]
+# WORKERS and NGINX_WORKERS are read at start-up; unset means the sizes the
+# 2026-09-16 run used (32 children, 2 nginx workers).
+CMD ["/usr/local/bin/entrypoint"]
