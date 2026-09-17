@@ -1,6 +1,6 @@
 {
   "stamp": "2026-09-17",
-  "generated": "2026-09-17T16:50:25.875Z",
+  "generated": "2026-09-17T19:06:51.490Z",
   "question": "An API that verifies an RS256 bearer token on every request and then reads or writes one row: how much mixed traffic does one core carry, in each runtime?",
   "estimator": {
     "capacity": "the highest rate on the grid that met the service level in a majority of the repetitions",
@@ -146,9 +146,505 @@
       {
         "mode": "--grid",
         "at": "2026-09-17T14:58:06Z"
+      },
+      {
+        "mode": "--ceiling",
+        "at": "2026-09-17T19:04:00Z"
       }
     ]
   },
+  "ceiling": [
+    {
+      "candidate": "go",
+      "cores": 1,
+      "workers": 16,
+      "rps": 16883,
+      "perCore": 16883,
+      "repetitions": 5,
+      "validRepetitions": 5,
+      "spread": {
+        "min": 16341,
+        "median": 16541
+      },
+      "readRps": 8559,
+      "writeRps": 8324,
+      "readP50Ms": 7.412,
+      "readP99Ms": 9.399,
+      "writeP50Ms": 7.515,
+      "writeP99Ms": 9.355,
+      "serverP99Ms": 9.399,
+      "cpuUsPerReq": 57.8,
+      "dbCpuUsPerReq": 36.51,
+      "appCores": 0.98,
+      "dbCores": 0.62,
+      "coreUtilisation": 98,
+      "rssPeakMiB": 16,
+      "reqPerCpuSecond": 17302,
+      "hostOtherPctAtBest": 113.3,
+      "probe": {
+        "target": 19598,
+        "delivered": 19595
+      },
+      "fromRep": 5
+    },
+    {
+      "candidate": "go",
+      "cores": 2,
+      "workers": 64,
+      "rps": 29449,
+      "perCore": 14725,
+      "repetitions": 5,
+      "validRepetitions": 5,
+      "spread": {
+        "min": 28290,
+        "median": 28887
+      },
+      "readRps": 16012,
+      "writeRps": 13437,
+      "readP50Ms": 3.771,
+      "readP99Ms": 9.725,
+      "writeP50Ms": 4.541,
+      "writeP99Ms": 10.397,
+      "serverP99Ms": 10.396,
+      "cpuUsPerReq": 63.65,
+      "dbCpuUsPerReq": 39.9,
+      "appCores": 1.87,
+      "dbCores": 1.17,
+      "coreUtilisation": 93.5,
+      "rssPeakMiB": 28.4,
+      "reqPerCpuSecond": 15711,
+      "hostOtherPctAtBest": 121.6,
+      "probe": {
+        "target": 34179,
+        "delivered": 34176
+      },
+      "fromRep": 3
+    },
+    {
+      "candidate": "go",
+      "cores": 4,
+      "workers": 64,
+      "rps": 57321,
+      "perCore": 14330,
+      "repetitions": 5,
+      "validRepetitions": 5,
+      "spread": {
+        "min": 55836,
+        "median": 56571
+      },
+      "readRps": 32392,
+      "writeRps": 24930,
+      "readP50Ms": 1.811,
+      "readP99Ms": 4.694,
+      "writeP50Ms": 2.417,
+      "writeP99Ms": 5.405,
+      "serverP99Ms": 5.405,
+      "cpuUsPerReq": 66.77,
+      "dbCpuUsPerReq": 40.75,
+      "appCores": 3.83,
+      "dbCores": 2.34,
+      "coreUtilisation": 95.8,
+      "rssPeakMiB": 30.4,
+      "reqPerCpuSecond": 14976,
+      "hostOtherPctAtBest": 109,
+      "probe": {
+        "target": 60000,
+        "delivered": 59997
+      },
+      "fromRep": 3
+    },
+    {
+      "candidate": "fpm",
+      "cores": 1,
+      "workers": 8,
+      "rps": 6218,
+      "perCore": 6218,
+      "repetitions": 5,
+      "validRepetitions": 5,
+      "spread": {
+        "min": 6184,
+        "median": 6192
+      },
+      "readRps": 3109,
+      "writeRps": 3109,
+      "readP50Ms": 20.523,
+      "readP99Ms": 22.235,
+      "writeP50Ms": 20.526,
+      "writeP99Ms": 22.169,
+      "serverP99Ms": 22.233,
+      "cpuUsPerReq": 157.07,
+      "dbCpuUsPerReq": 54.16,
+      "appCores": 0.98,
+      "dbCores": 0.34,
+      "coreUtilisation": 98,
+      "rssPeakMiB": 24.9,
+      "reqPerCpuSecond": 6367,
+      "hostOtherPctAtBest": 118.8,
+      "probe": {
+        "target": 7116,
+        "delivered": 7115
+      },
+      "fromRep": 5
+    },
+    {
+      "candidate": "fpm",
+      "cores": 2,
+      "workers": 16,
+      "rps": 11211,
+      "perCore": 5606,
+      "repetitions": 5,
+      "validRepetitions": 5,
+      "spread": {
+        "min": 11085,
+        "median": 11118
+      },
+      "readRps": 5620,
+      "writeRps": 5592,
+      "readP50Ms": 11.341,
+      "readP99Ms": 12.802,
+      "writeP50Ms": 11.399,
+      "writeP99Ms": 12.91,
+      "serverP99Ms": 12.909,
+      "cpuUsPerReq": 173.83,
+      "dbCpuUsPerReq": 60.61,
+      "appCores": 1.95,
+      "dbCores": 0.68,
+      "coreUtilisation": 97.5,
+      "rssPeakMiB": 35.4,
+      "reqPerCpuSecond": 5753,
+      "hostOtherPctAtBest": 125.6,
+      "probe": {
+        "target": 12948,
+        "delivered": 12946
+      },
+      "fromRep": 2
+    },
+    {
+      "candidate": "fpm",
+      "cores": 4,
+      "workers": 32,
+      "rps": 20606,
+      "perCore": 5152,
+      "repetitions": 5,
+      "validRepetitions": 5,
+      "spread": {
+        "min": 20148,
+        "median": 20291
+      },
+      "readRps": 10478,
+      "writeRps": 10128,
+      "readP50Ms": 6.025,
+      "readP99Ms": 8.269,
+      "writeP50Ms": 6.238,
+      "writeP99Ms": 8.448,
+      "serverP99Ms": 8.446,
+      "cpuUsPerReq": 187.74,
+      "dbCpuUsPerReq": 71.07,
+      "appCores": 3.87,
+      "dbCores": 1.46,
+      "coreUtilisation": 96.8,
+      "rssPeakMiB": 60,
+      "reqPerCpuSecond": 5327,
+      "hostOtherPctAtBest": 105.5,
+      "probe": {
+        "target": 23435,
+        "delivered": 23432
+      },
+      "fromRep": 5
+    },
+    {
+      "candidate": "frankenphp",
+      "cores": 1,
+      "workers": 8,
+      "rps": 6544,
+      "perCore": 6544,
+      "repetitions": 5,
+      "validRepetitions": 5,
+      "spread": {
+        "min": 6452,
+        "median": 6455
+      },
+      "readRps": 2317,
+      "writeRps": 4228,
+      "readP50Ms": 28.473,
+      "readP99Ms": 40.865,
+      "writeP50Ms": 14.954,
+      "writeP99Ms": 29.729,
+      "serverP99Ms": 40.865,
+      "cpuUsPerReq": 82.77,
+      "dbCpuUsPerReq": 26.89,
+      "appCores": 0.54,
+      "dbCores": 0.18,
+      "coreUtilisation": 54,
+      "rssPeakMiB": 58.4,
+      "reqPerCpuSecond": 12082,
+      "hostOtherPctAtBest": 119,
+      "probe": {
+        "target": 6981,
+        "delivered": 6980
+      },
+      "fromRep": 2
+    },
+    {
+      "candidate": "frankenphp",
+      "cores": 2,
+      "workers": 8,
+      "rps": 14306,
+      "perCore": 7153,
+      "repetitions": 5,
+      "validRepetitions": 5,
+      "spread": {
+        "min": 11819,
+        "median": 14256
+      },
+      "readRps": 7071,
+      "writeRps": 7236,
+      "readP50Ms": 9.052,
+      "readP99Ms": 18.191,
+      "writeP50Ms": 8.814,
+      "writeP99Ms": 17.899,
+      "serverP99Ms": 18.191,
+      "cpuUsPerReq": 100.68,
+      "dbCpuUsPerReq": 38.68,
+      "appCores": 1.44,
+      "dbCores": 0.55,
+      "coreUtilisation": 72,
+      "rssPeakMiB": 58.4,
+      "reqPerCpuSecond": 9933,
+      "hostOtherPctAtBest": 122.7,
+      "probe": {
+        "target": 16767,
+        "delivered": 16766
+      },
+      "fromRep": 2
+    },
+    {
+      "candidate": "frankenphp",
+      "cores": 4,
+      "workers": 8,
+      "rps": 25659,
+      "perCore": 6415,
+      "repetitions": 5,
+      "validRepetitions": 5,
+      "spread": {
+        "min": 25203,
+        "median": 25387
+      },
+      "readRps": 13084,
+      "writeRps": 12575,
+      "readP50Ms": 4.769,
+      "readP99Ms": 8.796,
+      "writeP50Ms": 4.959,
+      "writeP99Ms": 9.056,
+      "serverP99Ms": 9.056,
+      "cpuUsPerReq": 110.74,
+      "dbCpuUsPerReq": 43.2,
+      "appCores": 2.84,
+      "dbCores": 1.11,
+      "coreUtilisation": 71,
+      "rssPeakMiB": 60.3,
+      "reqPerCpuSecond": 9030,
+      "hostOtherPctAtBest": 108.1,
+      "probe": {
+        "target": 29389,
+        "delivered": 29386
+      },
+      "fromRep": 3
+    }
+  ],
+  "ceilScaling": [
+    {
+      "candidate": "go",
+      "base": 16883,
+      "c1": 16883,
+      "c1PerCore": 16883,
+      "c1Efficiency": 1,
+      "c2": 29449,
+      "c2PerCore": 14725,
+      "c2Efficiency": 0.872,
+      "c4": 57321,
+      "c4PerCore": 14330,
+      "c4Efficiency": 0.849
+    },
+    {
+      "candidate": "fpm",
+      "base": 6218,
+      "c1": 6218,
+      "c1PerCore": 6218,
+      "c1Efficiency": 1,
+      "c2": 11211,
+      "c2PerCore": 5606,
+      "c2Efficiency": 0.901,
+      "c4": 20606,
+      "c4PerCore": 5152,
+      "c4Efficiency": 0.828
+    },
+    {
+      "candidate": "frankenphp",
+      "base": 6544,
+      "c1": 6544,
+      "c1PerCore": 6544,
+      "c1Efficiency": 1,
+      "c2": 14306,
+      "c2PerCore": 7153,
+      "c2Efficiency": 1.093,
+      "c4": 25659,
+      "c4PerCore": 6415,
+      "c4Efficiency": 0.98
+    }
+  ],
+  "ceilPlan": [
+    {
+      "target": 10000,
+      "instanceCores": 1,
+      "go": 1,
+      "goCores": 1,
+      "fpm": 2,
+      "fpmCores": 2,
+      "frankenphp": 2,
+      "frankenphpCores": 2
+    },
+    {
+      "target": 10000,
+      "instanceCores": 2,
+      "go": 1,
+      "goCores": 2,
+      "fpm": 1,
+      "fpmCores": 2,
+      "frankenphp": 1,
+      "frankenphpCores": 2
+    },
+    {
+      "target": 10000,
+      "instanceCores": 4,
+      "go": 1,
+      "goCores": 4,
+      "fpm": 1,
+      "fpmCores": 4,
+      "frankenphp": 1,
+      "frankenphpCores": 4
+    },
+    {
+      "target": 20000,
+      "instanceCores": 1,
+      "go": 2,
+      "goCores": 2,
+      "fpm": 4,
+      "fpmCores": 4,
+      "frankenphp": 4,
+      "frankenphpCores": 4
+    },
+    {
+      "target": 20000,
+      "instanceCores": 2,
+      "go": 1,
+      "goCores": 2,
+      "fpm": 2,
+      "fpmCores": 4,
+      "frankenphp": 2,
+      "frankenphpCores": 4
+    },
+    {
+      "target": 20000,
+      "instanceCores": 4,
+      "go": 1,
+      "goCores": 4,
+      "fpm": 1,
+      "fpmCores": 4,
+      "frankenphp": 1,
+      "frankenphpCores": 4
+    },
+    {
+      "target": 30000,
+      "instanceCores": 1,
+      "go": 2,
+      "goCores": 2,
+      "fpm": 5,
+      "fpmCores": 5,
+      "frankenphp": 5,
+      "frankenphpCores": 5
+    },
+    {
+      "target": 30000,
+      "instanceCores": 2,
+      "go": 2,
+      "goCores": 4,
+      "fpm": 3,
+      "fpmCores": 6,
+      "frankenphp": 3,
+      "frankenphpCores": 6
+    },
+    {
+      "target": 30000,
+      "instanceCores": 4,
+      "go": 1,
+      "goCores": 4,
+      "fpm": 2,
+      "fpmCores": 8,
+      "frankenphp": 2,
+      "frankenphpCores": 8
+    },
+    {
+      "target": 50000,
+      "instanceCores": 1,
+      "go": 3,
+      "goCores": 3,
+      "fpm": 9,
+      "fpmCores": 9,
+      "frankenphp": 8,
+      "frankenphpCores": 8
+    },
+    {
+      "target": 50000,
+      "instanceCores": 2,
+      "go": 2,
+      "goCores": 4,
+      "fpm": 5,
+      "fpmCores": 10,
+      "frankenphp": 4,
+      "frankenphpCores": 8
+    },
+    {
+      "target": 50000,
+      "instanceCores": 4,
+      "go": 1,
+      "goCores": 4,
+      "fpm": 3,
+      "fpmCores": 12,
+      "frankenphp": 2,
+      "frankenphpCores": 8
+    },
+    {
+      "target": 100000,
+      "instanceCores": 1,
+      "go": 6,
+      "goCores": 6,
+      "fpm": 17,
+      "fpmCores": 17,
+      "frankenphp": 16,
+      "frankenphpCores": 16
+    },
+    {
+      "target": 100000,
+      "instanceCores": 2,
+      "go": 4,
+      "goCores": 8,
+      "fpm": 9,
+      "fpmCores": 18,
+      "frankenphp": 7,
+      "frankenphpCores": 14
+    },
+    {
+      "target": 100000,
+      "instanceCores": 4,
+      "go": 2,
+      "goCores": 8,
+      "fpm": 5,
+      "fpmCores": 20,
+      "frankenphp": 4,
+      "frankenphpCores": 16
+    }
+  ],
   "capacity": [
     {
       "candidate": "go",
@@ -2051,99 +2547,16 @@
     "tpsMedian": 64889,
     "dbCores": 3.45
   },
-  "soak": [
-    {
-      "candidate": "fpm",
-      "targetRate": 6500,
-      "windows": 5,
-      "windowSeconds": 60,
-      "held": 1,
-      "of": 4,
-      "firstWindowPassed": false,
-      "achievedMedian": 6410.545,
-      "readP99First": 9668.96,
-      "readP99Last": 3159.318,
-      "writeP99First": 10781.964,
-      "writeP99Last": 3745.854,
-      "readP99Max": 9668.96,
-      "writeP99Max": 10781.964,
-      "cpuUsPerReqFirst": 430.67,
-      "cpuUsPerReqLast": 329.64,
-      "dbCpuUsPerReqFirst": 160.85,
-      "dbCpuUsPerReqLast": 130.44,
-      "rssPeakMiB": 118.5,
-      "rowsAdded": 907396,
-      "tableStartBytes": 185532416,
-      "tableEndBytes": 329711616,
-      "bytesPerRow": 158.9,
-      "series": [
-        {
-          "window": 1,
-          "achieved": 6465.63,
-          "readP99Ms": 561.159,
-          "writeP99Ms": 788.054,
-          "cpuUsPerReq": 334.68,
-          "dbCpuUsPerReq": 128.15,
-          "rows": 1193331,
-          "totalBytes": 212590592,
-          "pass": false
-        },
-        {
-          "window": 2,
-          "achieved": 4678.5,
-          "readP99Ms": 9668.96,
-          "writeP99Ms": 10781.964,
-          "cpuUsPerReq": 430.67,
-          "dbCpuUsPerReq": 160.85,
-          "rows": 1331745,
-          "totalBytes": 235421696,
-          "pass": false
-        },
-        {
-          "window": 3,
-          "achieved": 6499.92,
-          "readP99Ms": 3788.244,
-          "writeP99Ms": 4252.017,
-          "cpuUsPerReq": 312.43,
-          "dbCpuUsPerReq": 113.35,
-          "rows": 1526743,
-          "totalBytes": 267354112,
-          "pass": false
-        },
-        {
-          "window": 4,
-          "achieved": 6499.97,
-          "readP99Ms": 1.823,
-          "writeP99Ms": 2.876,
-          "cpuUsPerReq": 226.48,
-          "dbCpuUsPerReq": 78.58,
-          "rows": 1721741,
-          "totalBytes": 299237376,
-          "pass": true
-        },
-        {
-          "window": 5,
-          "achieved": 6321.17,
-          "readP99Ms": 3159.318,
-          "writeP99Ms": 3745.854,
-          "cpuUsPerReq": 329.64,
-          "dbCpuUsPerReq": 130.44,
-          "rows": 1907396,
-          "totalBytes": 329711616,
-          "pass": false
-        }
-      ]
-    }
-  ],
+  "soak": [],
   "integrity": {
-    "measuredPoints": 194,
+    "measuredPoints": 189,
     "ratesWhereRepetitionsDisagreed": 32,
     "ratesMeasured": 63,
     "pointsBySloBreach": {
       "rate": 96,
       "p99": 139
     },
-    "answers": 63004653,
+    "answers": 61176742,
     "pointsWithFailedRequests": 0,
     "seededRowsBeforeEveryLadderStep": {
       "min": 1000000,

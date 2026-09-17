@@ -98,6 +98,19 @@ TOK_WRITE=$(jq -r '.pool[1]' keys/tokens.json)
 
 secs() { echo "${1%s}"; }
 
+# What macOS itself was doing while a block was measured. The Docker VM is given
+# all twelve of the host's cores, so anything else running on the host is taken
+# straight out of the measurement — and the run of 17:01 proved it: every
+# generator probe passed while the candidates came out at a third of their known
+# throughput, because ten of the twelve cores were running headless Chromium.
+# `vmPct` is the VM's own share; `otherPct` is everything competing with it.
+host_load() {
+  ps -Ao pcpu,comm | awk '
+    NR > 1 { total += $1; if ($0 ~ /Virtualization.VirtualMachine/) vm += $1 }
+    END { printf "{\"totalPct\":%.1f,\"vmPct\":%.1f,\"otherPct\":%.1f,\"load1\":%s}",
+                 total, vm, total - vm, LOAD }' LOAD="$(sysctl -n vm.loadavg | awk '{print $2}')"
+}
+
 # The two generators meet at one instant, and that instant has to be in the
 # clock of the VM they run in, not of macOS. The offset is measured once and
 # deliberately includes container start-up latency, which can only push the
@@ -523,7 +536,7 @@ phase_grid() {
 # fell short is recorded and excluded — it measured the generator.
 phase_ceiling() {
   log2 "== ceiling: what each cell carries flat out, behind a generator probe"
-  local cand c rep wk anchor ptarget pr pw pdel ok r w total cpus
+  local cand c rep wk anchor ptarget pr pw pdel ok r w total cpus hload
   for rep in $(seq 1 "$CEIL_REPS"); do
     for c in "${CORES[@]}"; do
       for cand in "${CANDS[@]}"; do
@@ -559,11 +572,13 @@ phase_ceiling() {
         w=$(half "$RAW/ceil2_${cand}_c${c}_r${rep}.write.json")
         total=$(jq -n -r --argjson r "$r" --argjson w "$w" --argjson d "$(secs "$CEIL_DUR")" \
           '(($r.ok + $w.ok) / $d) | floor')
+        hload=$(host_load)
+        log2 "  host: $(jq -r '"other=\(.otherPct)% load=\(.load1)"' <<< "$hload")"
         jq -n -c --arg cand "$cand" --argjson cores "$c" --argjson workers "$wk" --argjson rep "$rep" \
           --argjson read "$r" --argjson write "$w" --argjson total "$total" \
           --argjson probeTarget "$ptarget" --argjson probeDelivered "$pdel" --argjson valid "$ok" \
           --argjson resrc "$(res "$RAW/ceil2_${cand}_c${c}_r${rep}.res.jsonl")" \
-          --argjson dur "$(secs "$CEIL_DUR")" \
+          --argjson dur "$(secs "$CEIL_DUR")" --argjson host "$hload" \
           '{phase:"ceiling", candidate:$cand, cores:$cores, workers:$workers, rep:$rep,
             read:$read, write:$write, totalRps:$total,
             probeTarget:$probeTarget, probeDelivered:$probeDelivered, valid:$valid,
@@ -571,7 +586,8 @@ phase_ceiling() {
             cpuUsPerReq: (if ($read.ok + $write.ok) > 0 then (($resrc.appCpuUs / ($read.ok + $write.ok) * 100 | round) / 100) else null end),
             dbCpuUsPerReq: (if ($read.ok + $write.ok) > 0 then (($resrc.dbCpuUs / ($read.ok + $write.ok) * 100 | round) / 100) else null end),
             appCores: (($resrc.appCpuUs / 1000000 / $dur * 100 | round) / 100),
-            dbCores: (($resrc.dbCpuUs / 1000000 / $dur * 100 | round) / 100)}' >> "$OUT/steps.jsonl"
+            dbCores: (($resrc.dbCpuUs / 1000000 / $dur * 100 | round) / 100),
+            host: $host}' >> "$OUT/steps.jsonl"
         log2 "  flat out $total/s  app=$(jq -n -r --argjson x "$(res "$RAW/ceil2_${cand}_c${c}_r${rep}.res.jsonl")" --argjson d "$(secs "$CEIL_DUR")" '(($x.appCpuUs/1000000/$d)*100|round)/100') cores  valid=$ok"
         stop_app
       done

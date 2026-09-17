@@ -84,6 +84,77 @@ const seconds = (d) => +String(d).replace(/s$/, '');
 const grid = steps.filter((s) => s.phase === 'grid');
 const cellCeil = steps.filter((s) => s.phase === 'cellceiling');
 
+/* The headline. Each cell was measured five times, every repetition preceded by
+   a generator probe, and the best VALID repetition is the answer: the host is a
+   laptop whose twelve cores are all given to the VM, so anything else running
+   on it comes straight out of the measurement and can only ever subtract. The
+   host load recorded beside each repetition is what lets that claim be checked
+   rather than asserted. */
+const ceilRuns = steps.filter((s) => s.phase === 'ceiling');
+const ceiling = [];
+for (const candidate of candidates) {
+  for (const cores of coreBudgets) {
+    const all = ceilRuns.filter((s) => s.candidate === candidate && s.cores === cores);
+    if (!all.length) continue;
+    const valid = all.filter((s) => s.valid);
+    const pool = valid.length ? valid : all;
+    const best = pool.reduce((a, b) => (b.totalRps > a.totalRps ? b : a));
+    ceiling.push({
+      candidate, cores,
+      workers: all[0].workers,
+      rps: best.totalRps,
+      perCore: round(best.totalRps / cores),
+      repetitions: all.length,
+      validRepetitions: valid.length,
+      spread: { min: min(pool.map((s) => s.totalRps)), median: round(median(pool.map((s) => s.totalRps))) },
+      readRps: round(best.read.ok / 20), writeRps: round(best.write.ok / 20),
+      readP50Ms: best.read.p50ms, readP99Ms: best.read.p99ms,
+      writeP50Ms: best.write.p50ms, writeP99Ms: best.write.p99ms,
+      serverP99Ms: Math.max(best.read.fb99ms ?? 0, best.write.fb99ms ?? 0),
+      cpuUsPerReq: best.cpuUsPerReq,
+      dbCpuUsPerReq: best.dbCpuUsPerReq,
+      appCores: best.appCores,
+      dbCores: best.dbCores,
+      coreUtilisation: round((best.appCores / cores) * 100, 1),
+      rssPeakMiB: MiB(best.resources?.appAnonPeak),
+      reqPerCpuSecond: best.resources?.appCpuUs > 0
+        ? round((best.read.ok + best.write.ok) / (best.resources.appCpuUs / 1e6)) : null,
+      hostOtherPctAtBest: best.host?.otherPct ?? null,
+      probe: { target: best.probeTarget, delivered: best.probeDelivered },
+      fromRep: best.rep,
+    });
+  }
+}
+const ceil = (candidate, cores) => ceiling.find((c) => c.candidate === candidate && c.cores === cores);
+
+/* Scaling on the ceiling, which is the number this run can actually stand
+   behind, rather than on the service-level grid. */
+const ceilScaling = candidates.map((candidate) => {
+  const one = ceil(candidate, 1)?.rps;
+  const row = { candidate, base: one };
+  for (const cores of coreBudgets) {
+    const c = ceil(candidate, cores);
+    row[`c${cores}`] = c?.rps ?? null;
+    row[`c${cores}PerCore`] = c?.perCore ?? null;
+    row[`c${cores}Efficiency`] = one && c?.rps ? round(c.rps / (one * cores), 3) : null;
+  }
+  return row;
+});
+
+/* What a target costs, from the ceiling. Instances, not fractions of a core. */
+const ceilPlan = [];
+for (const target of [10000, 20000, 30000, 50000, 100000]) {
+  for (const cores of coreBudgets) {
+    const row = { target, instanceCores: cores };
+    for (const candidate of candidates) {
+      const c = ceil(candidate, cores);
+      row[candidate] = c?.rps ? Math.ceil(target / c.rps) : null;
+      row[`${candidate}Cores`] = c?.rps ? Math.ceil(target / c.rps) * cores : null;
+    }
+    ceilPlan.push(row);
+  }
+}
+
 const worst = (p, field) => Math.max(p.read[field] ?? 0, p.write[field] ?? 0);
 
 const describe = (p) => {
@@ -340,7 +411,7 @@ const summary = {
     serviceLevel: `both halves of the mix at >= ${cfg.slo.achievedFraction * 100}% of target, p99 <= ${cfg.slo.p99Ms} ms, no failed request`,
   },
   meta,
-  capacity, curves, scaling, plan, tuned, floor, dbCeiling, dbCeilingBest, soak, integrity,
+  ceiling, ceilScaling, ceilPlan, capacity, curves, scaling, plan, tuned, floor, dbCeiling, dbCeilingBest, soak, integrity,
 };
 writeFileSync(join(dir, 'summary.json'), JSON.stringify(summary, null, 2) + '\n');
 
@@ -354,6 +425,21 @@ const pad = (x, n) => String(x ?? '-').padStart(n);
 const padr = (x, n) => String(x ?? '-').padEnd(n);
 
 console.log(`\ncapacity-${stamp} — ${integrity.measuredPoints} measured points, ${integrity.answers.toLocaleString('en-US')} answers, ${integrity.pointsWithFailedRequests} with a failed request\n`);
+console.log('CEILING       cores  pool     rps   /core  valid  spread(min..med)  app-cores  util%  cpu-us/req  db-us/req  p50 r/w      p99 r/w      rssMiB  host%');
+for (const c of ceiling) {
+  console.log(`${padr(c.candidate, 12)} ${pad(c.cores, 6)} ${pad(c.workers, 4)} ${pad(c.rps, 7)} ${pad(c.perCore, 7)} ${pad(`${c.validRepetitions}/${c.repetitions}`, 6)} ${pad(`${c.spread.min}..${c.spread.median}`, 17)} ${pad(c.appCores, 10)} ${pad(c.coreUtilisation, 6)} ${pad(c.cpuUsPerReq, 11)} ${pad(c.dbCpuUsPerReq, 10)} ${pad(c.readP50Ms, 5)}/${pad(c.writeP50Ms, 6)} ${pad(c.readP99Ms, 6)}/${pad(c.writeP99Ms, 6)} ${pad(c.rssPeakMiB, 7)} ${pad(c.hostOtherPctAtBest, 6)}`);
+}
+console.log('\nCEILING SCALING  ' + coreBudgets.map((n) => `${n}c`.padStart(9)).join('') + '     ' + coreBudgets.map((n) => `eff${n}c`.padStart(8)).join(''));
+for (const s of ceilScaling) {
+  console.log(`${padr(s.candidate, 15)}  ` + coreBudgets.map((n) => pad(s[`c${n}`], 8)).join(' ') + '     ' + coreBudgets.map((n) => pad(s[`c${n}Efficiency`], 7)).join(' '));
+}
+console.log('\nINSTANCES NEEDED (from the ceiling)');
+console.log('target    cores/instance  ' + candidates.map((c) => c.padStart(12)).join(''));
+for (const p of ceilPlan) {
+  console.log(`${pad(p.target, 7)}   ${pad(p.instanceCores, 12)}    ` + candidates.map((c) => pad(p[c], 12)).join(''));
+}
+
+console.log('\nSERVICE-LEVEL GRID (see EXCLUDED.md — not the published number)');
 console.log('CAPACITY      cores  pool  carried  /core  flat-out  used%  clientp99  serverp99  cpu-us/req  db-us/req  cores-used  rssMiB');
 for (const c of capacity) {
   console.log(`${padr(c.candidate, 12)} ${pad(c.cores, 6)} ${pad(c.workers, 4)} ${pad(c.capacity, 8)} ${pad(c.perCore, 6)} ${pad(c.flatOutRps, 9)} ${pad(c.headroomPct, 6)} ${pad(Math.max(c.readP99Ms ?? 0, c.writeP99Ms ?? 0), 10)} ${pad(c.serverP99Ms, 10)} ${pad(c.cpuUsPerReq, 11)} ${pad(c.dbCpuUsPerReq, 10)} ${pad(c.appCores, 11)} ${pad(c.rssPeakMiB, 7)}`);
