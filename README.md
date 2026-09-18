@@ -76,9 +76,11 @@ FrankenPHP worker. php-fpm keeps the PEM in an opcached PHP file and turns it
 into an OpenSSL key object on every request — that per-request cost is part
 of what php-fpm is. Verification results are never cached anywhere.
 
-**Durability.** `synchronous_commit` stays on. Every block starts from a
-byte-identical copy of the seeded table (`CREATE DATABASE … TEMPLATE`),
-pulled into shared buffers with `pg_prewarm`, followed by a `CHECKPOINT`.
+**Durability.** `synchronous_commit` stays on. Every block starts from a copy
+of the seeded database (`CREATE DATABASE … TEMPLATE`) — an exact copy of the
+contents, though not a filesystem byte copy, since the default WAL_LOG strategy
+copies block by block through the log — pulled into shared buffers with
+`pg_prewarm`, followed by a `CHECKPOINT`.
 
 **Phase A — fixed rate (open loop).** `oha -q <target> --latency-correction`,
 256 connections, 60 s, 5 repetitions. Targets: `write` 10,000/s, `read`

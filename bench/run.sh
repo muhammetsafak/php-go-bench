@@ -4,8 +4,8 @@
 # Protocol, in one place so the report can quote it:
 #   * app, PostgreSQL and the load generator sit on disjoint cpusets
 #     (4 + 4 + 4 of the Docker VM's 12 vCPUs); one candidate runs at a time
-#   * every block starts from a byte-identical, prewarmed copy of a
-#     1,000,000-row table and a fresh candidate container
+#   * every block starts from a prewarmed copy of the seeded 1,000,000-row
+#     table and a fresh candidate container
 #   * before each block, a reference nginx that runs no application code is
 #     put on the candidate's four cores and driven at the target rate: if the
 #     generator cannot hit the target against it, no candidate could either,

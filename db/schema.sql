@@ -1,8 +1,10 @@
 -- The one table both languages write to and read from.
 --
--- Loaded once into a template database; every measurement block gets a
--- byte-identical copy (CREATE DATABASE ... TEMPLATE), so the write scenario of
--- one block never leaves a bigger table or a bloated index for the next.
+-- Loaded once into a template database; every measurement block starts from a
+-- copy of it (CREATE DATABASE ... TEMPLATE), so the write scenario of one block
+-- never leaves a bigger table or a bloated index for the next. The copy is an
+-- exact copy of the contents, not a filesystem-level byte copy: the default
+-- WAL_LOG strategy copies block by block through the write-ahead log.
 --
 -- One million rows: large enough that the primary-key index does not fit in a
 -- CPU cache, small enough to sit entirely in shared_buffers after pg_prewarm,
