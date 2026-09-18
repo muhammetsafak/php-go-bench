@@ -41,7 +41,7 @@ half is untouched and only writes spike — at `rep1 4c go`, read p99 3.34 ms,
 write p99 10.61 ms.
 
 **A single spoiled window was unrecoverable.** The search doubles the rate
-until one fails, then bisects. 10.61 ms is six hundredths of a millisecond
+until one fails, then bisects. 10.61 ms is six tenths of a millisecond
 over the 10 ms service level, so the very first step of that cell — 3,000
 requests a second, on four cores, against a candidate that would go on to
 carry 48,000 — was recorded as a failure. The search had no passing rate to
