@@ -44,7 +44,7 @@ write p99 10.61 ms.
 until one fails, then bisects. 10.61 ms is six hundredths of a millisecond
 over the 10 ms service level, so the very first step of that cell — 3,000
 requests a second, on four cores, against a candidate that would go on to
-carry 48,750 — was recorded as a failure. The search had no passing rate to
+carry 48,000 — was recorded as a failure. The search had no passing rate to
 bisect against, turned downwards, and spent the rest of the cell confirming
 that Go can serve 1,250 requests a second. The same thing happened to
 `rep2 2c fpm`, whose first window showed a write p99 of 295 ms.
@@ -116,10 +116,10 @@ twenty:
 
 | | p50 | p75 | p99 | slowest |
 |---|---|---|---|---|
-| time to first byte | 1.42 ms | 47 ms | **190 ms** | 267 ms |
+| time to first byte | 1.42 ms | 47 ms | **191 ms** | 267 ms |
 | latency-corrected | 1.44 ms | 1,539 ms | **3,718 ms** | 3,819 ms |
 
-The server answered in 190 ms at the 99th percentile. The other 3.5 seconds is
+The server answered in 191 ms at the 99th percentile. The other 3.5 seconds is
 time the request spent waiting to be **sent**: with `--latency-correction` a
 request is timed from the moment it was due, so once responses get slow enough
 that the generator's connections are all occupied, the schedule slips and every
